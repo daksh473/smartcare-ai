@@ -116,7 +116,7 @@ http://localhost:5173
 
 ---
 
-## 🏆 FlowZint AI Hackathon 2026
+## 🏆Zint AI Hackathon 2026
 
 Built for the FlowZint AI Hackathon 2026 — National Level Innovation Challenge.
 
