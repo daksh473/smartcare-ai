@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>SentimentAI — Real-time Emotion Bot</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;600&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg: #05070f;
+    --surface: rgba(255,255,255,0.03);
+    --border: rgba(255,255,255,0.07);
+    --accent: #00f5ff;
+    --accent2: #bf00ff;
+    --red: #ff3a5c;
+    --green: #00e676;
+    --gray: #4a5568;
+    --text: #e2e8f0;
+    --muted: #4a5568;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Rajdhani', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Animated grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,245,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,245,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Glow blobs */
+  .blob {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.15;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .blob1 { width: 400px; height: 400px; background: var(--accent); top: -100px; left: -100px; animation: blobMove 8s ease-in-out infinite alternate; }
+  .blob2 { width: 300px; height: 300px; background: var(--accent2); bottom: -80px; right: -80px; animation: blobMove 10s ease-in-out infinite alternate-reverse; }
+
+  @keyframes blobMove {
+    0% { transform: translate(0,0) scale(1); }
+    100% { transform: translate(40px,40px) scale(1.1); }
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 30px 20px;
+  }
+
+  /* Header */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 40px;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+
+  /* 3D Robot */
+  .robot-wrap {
+    width: 80px;
+    height: 80px;
+    perspective: 300px;
+    flex-shrink: 0;
+  }
+
+  .robot-3d {
+    width: 100%;
+    height: 100%;
+    transform-style: preserve-3d;
+    animation: spinY 6s linear infinite;
+    position: relative;
+  }
+
+  @keyframes spinY {
+    0%   { transform: rotateY(0deg) rotateX(10deg); }
+    100% { transform: rotateY(360deg) rotateX(10deg); }
+  }
+
+  /* Robot built from CSS 3D boxes */
+  .robot-3d .face {
+    position: absolute;
+    background: linear-gradient(135deg, #0ff2, #bf00ff22);
+    border: 1px solid var(--accent);
+    box-shadow: inset 0 0 8px rgba(0,245,255,0.3), 0 0 6px rgba(0,245,255,0.2);
+  }
+
+  /* Head cube: 46px */
+  .head { width: 46px; height: 46px; top: 0; left: 17px; transform-style: preserve-3d; position: absolute; animation: headBob 2s ease-in-out infinite; }
+  @keyframes headBob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-3px)} }
+
+  .head .f { position: absolute; width: 46px; height: 46px; background: linear-gradient(135deg,rgba(0,245,255,0.15),rgba(191,0,255,0.1)); border: 1px solid var(--accent); box-shadow: inset 0 0 10px rgba(0,245,255,0.2); }
+  .head .front  { transform: translateZ(23px); }
+  .head .back   { transform: rotateY(180deg) translateZ(23px); }
+  .head .left   { width: 46px; height: 46px; transform: rotateY(-90deg) translateZ(23px); }
+  .head .right  { width: 46px; height: 46px; transform: rotateY(90deg) translateZ(23px); }
+  .head .top    { transform: rotateX(90deg) translateZ(23px); }
+  .head .bot    { transform: rotateX(-90deg) translateZ(23px); }
+
+  /* Eyes on front face */
+  .eye { position: absolute; width: 8px; height: 8px; background: var(--accent); border-radius: 50%; box-shadow: 0 0 8px var(--accent); top: 14px; animation: blink 4s infinite; }
+  .eye.l { left: 10px; } .eye.r { right: 10px; }
+  @keyframes blink { 0%,94%,100%{transform:scaleY(1)} 96%{transform:scaleY(0.1)} }
+
+  /* Mouth */
+  .mouth { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); width: 22px; height: 3px; background: var(--accent2); border-radius: 2px; box-shadow: 0 0 6px var(--accent2); }
+
+  /* Body cube */
+  .body-cube { width: 52px; height: 38px; top: 50px; left: 14px; transform-style: preserve-3d; position: absolute; }
+  .body-cube .f { position: absolute; width: 52px; height: 38px; background: linear-gradient(135deg,rgba(0,245,255,0.1),rgba(191,0,255,0.08)); border: 1px solid rgba(0,245,255,0.4); }
+  .body-cube .front  { transform: translateZ(19px); }
+  .body-cube .back   { transform: rotateY(180deg) translateZ(19px); }
+  .body-cube .left   { width: 38px; height: 38px; transform: rotateY(-90deg) translateZ(19px); left:7px; }
+  .body-cube .right  { width: 38px; height: 38px; transform: rotateY(90deg) translateZ(33px); }
+  .body-cube .top    { transform: rotateX(90deg) translateZ(19px); }
+  .body-cube .bot    { transform: rotateX(-90deg) translateZ(19px); }
+
+  /* Chest light */
+  .chest-light { position: absolute; width: 10px; height: 10px; background: var(--accent2); border-radius: 50%; top: 14px; left: 21px; box-shadow: 0 0 10px var(--accent2); animation: pulse 1.5s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.8)} }
+
+  .brand-text h1 {
+    font-family: 'Orbitron', monospace;
+    font-size: 22px;
+    font-weight: 900;
+    letter-spacing: 2px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .brand-text p {
+    font-size: 13px;
+    color: var(--muted);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-top: 2px;
+  }
+
+  /* Lang toggle */
+  .lang-toggle { display: flex; gap: 6px; }
+  .lang-btn {
+    padding: 6px 18px;
+    border-radius: 20px;
+    border: 1px solid var(--accent);
+    background: transparent;
+    color: var(--accent);
+    cursor: pointer;
+    font-family: 'Orbitron', monospace;
+    font-size: 11px;
+    letter-spacing: 2px;
+    transition: all 0.2s;
+  }
+  .lang-btn.active { background: var(--accent); color: var(--bg); }
+  .lang-btn:hover:not(.active) { background: rgba(0,245,255,0.1); }
+
+  /* Status bar */
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 24px;
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    font-family: 'Orbitron', monospace;
+  }
+  .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  /* Input area */
+  .input-area {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 24px;
+    backdrop-filter: blur(10px);
+    position: relative;
+    overflow: hidden;
+  }
+  .input-area::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  }
+
+  .input-row { display: flex; gap: 12px; }
+
+  input[type=text] {
+    flex: 1;
+    background: rgba(0,0,0,0.4);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 18px;
+    color: var(--text);
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 16px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  input[type=text]:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(0,245,255,0.1);
+  }
+
+  .send-btn {
+    padding: 14px 28px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border: none;
+    border-radius: 10px;
+    color: var(--bg);
+    font-family: 'Orbitron', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+  .send-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(0,245,255,0.3); }
+  .send-btn:active { transform: translateY(0); }
+
+  /* Score meter */
+  .meter-wrap {
+    margin-top: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .meter-label { font-size: 11px; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; font-family: 'Orbitron', monospace; width: 80px; }
+  .meter-bar { flex: 1; height: 6px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow: hidden; }
+  .meter-fill {
+    height: 100%;
+    width: 50%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--red), #ff9a00, var(--green));
+    background-size: 300% 100%;
+    background-position: 50% 0;
+    transition: background-position 0.8s ease, width 0.8s ease;
+    box-shadow: 0 0 8px rgba(0,245,255,0.4);
+  }
+  .meter-val { font-family: 'Orbitron', monospace; font-size: 13px; color: var(--accent); width: 36px; text-align: right; }
+
+  /* Messages */
+  #output { display: flex; flex-direction: column; gap: 12px; }
+
+  .msg {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px 20px;
+    backdrop-filter: blur(10px);
+    animation: slideIn 0.3s ease;
+    position: relative;
+    overflow: hidden;
+  }
+  @keyframes slideIn { from { opacity:0; transform: translateY(-10px); } to { opacity:1; transform: translateY(0); } }
+
+  .msg::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    border-radius: 3px 0 0 3px;
+  }
+  .msg.ESCALATE { border-color: rgba(255,58,92,0.25); background: rgba(255,58,92,0.05); }
+  .msg.ESCALATE::before { background: var(--red); box-shadow: 0 0 10px var(--red); }
+  .msg.NORMAL   { border-color: rgba(100,116,139,0.25); }
+  .msg.NORMAL::before { background: var(--gray); }
+  .msg.UPSELL   { border-color: rgba(0,230,118,0.25); background: rgba(0,230,118,0.05); }
+  .msg.UPSELL::before { background: var(--green); box-shadow: 0 0 10px var(--green); }
+
+  .msg-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+  .msg-text { font-size: 16px; font-weight: 600; flex: 1; }
+  .badge {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-family: 'Orbitron', monospace;
+    font-size: 10px;
+    letter-spacing: 1px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .badge.ESCALATE { background: rgba(255,58,92,0.2); color: var(--red); border: 1px solid rgba(255,58,92,0.4); }
+  .badge.NORMAL   { background: rgba(100,116,139,0.2); color: #94a3b8; border: 1px solid rgba(100,116,139,0.3); }
+  .badge.UPSELL   { background: rgba(0,230,118,0.15); color: var(--green); border: 1px solid rgba(0,230,118,0.3); }
+
+  .msg-meta { display: flex; gap: 20px; flex-wrap: wrap; }
+  .meta-item { display: flex; flex-direction: column; gap: 2px; }
+  .meta-label { font-size: 10px; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; font-family: 'Orbitron', monospace; }
+  .meta-val { font-size: 15px; font-weight: 600; color: var(--text); }
+
+  .msg-mini-bar { margin-top: 10px; height: 3px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden; }
+  .msg-mini-fill { height: 100%; border-radius: 2px; background: linear-gradient(90deg, var(--red), #ff9a00, var(--green)); background-size: 300% 100%; transition: background-position 0.5s; }
+
+  /* Empty state */
+  .empty {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--muted);
+  }
+  .empty-icon { font-size: 40px; margin-bottom: 12px; opacity: 0.4; }
+  .empty p { font-size: 14px; letter-spacing: 2px; text-transform: uppercase; font-family: 'Orbitron', monospace; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+</style>
+</head>
+<body>
+<div class="blob blob1"></div>
+<div class="blob blob2"></div>
+
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="brand">
+      <!-- 3D Robot -->
+      <div class="robot-wrap">
+        <div class="robot-3d">
+          <!-- Head -->
+          <div class="head">
+            <div class="f front">
+              <div class="eye l"></div>
+              <div class="eye r"></div>
+              <div class="mouth"></div>
+            </div>
+            <div class="f back"></div>
+            <div class="f left"></div>
+            <div class="f right"></div>
+            <div class="f top"></div>
+            <div class="f bot"></div>
+          </div>
+          <!-- Body -->
+          <div class="body-cube">
+            <div class="f front"><div class="chest-light"></div></div>
+            <div class="f back"></div>
+            <div class="f left"></div>
+            <div class="f right"></div>
+            <div class="f top"></div>
+            <div class="f bot"></div>
+          </div>
+        </div>
+      </div>
+      <div class="brand-text">
+        <h1>SENTIMENT<span style="color:var(--accent2)">AI</span></h1>
+        <p id="subtitle">Real-time Emotion Intelligence</p>
+      </div>
+    </div>
+    <div class="lang-toggle">
+      <button class="lang-btn active" onclick="setLang('en',this)">EN</button>
+      <button class="lang-btn" onclick="setLang('hi',this)">HI</button>
+    </div>
+  </div>
+
+  <!-- Status -->
+  <div class="status-bar">
+    <div class="status-dot" id="statusDot" style="background:var(--red);box-shadow:0 0 8px var(--red)"></div>
+    <span id="statusText">CONNECTING...</span>
+  </div>
+
+  <!-- Input -->
+  <div class="input-area">
+    <div class="input-row">
+      <input type="text" id="msg" placeholder="Type a message..." />
+      <button class="send-btn" id="sendBtn" onclick="send()">SEND</button>
+    </div>
+    <div class="meter-wrap">
+      <span class="meter-label" id="scoreLabel">SCORE</span>
+      <div class="meter-bar">
+        <div class="meter-fill" id="meterFill"></div>
+      </div>
+      <span class="meter-val" id="meterVal">—</span>
+    </div>
+  </div>
+
+  <!-- Output -->
+  <div id="output">
+    <div class="empty" id="emptyState">
+      <div class="empty-icon">🤖</div>
+      <p id="emptyText">Send a message to begin</p>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const t = {
+  en: {
+    subtitle: "Real-time Emotion Intelligence",
+    placeholder: "Type something... e.g. 'my order hasn't arrived'",
+    send: "SEND",
+    scoreLabel: "SCORE",
+    emotionLabel: "EMOTION",
+    actionLabel: "ACTION",
+    emptyText: "Send a message to begin",
+    connecting: "CONNECTING...",
+    connected: "WEBSOCKET LIVE",
+    disconnected: "DISCONNECTED",
+    actions: { ESCALATE: "🚨 Escalate to Agent", NORMAL: "💬 Normal Reply", UPSELL: "🎁 Send Offer" },
+    emotions: { angry:"Angry 😠", frustrated:"Frustrated 😤", neutral:"Neutral 😐", happy:"Happy 😊", grateful:"Grateful 🙏", curious:"Curious 🤔" }
+  },
+  hi: {
+    subtitle: "रियल-टाइम भावना विश्लेषण",
+    placeholder: "कुछ लिखो... जैसे 'मेरा ऑर्डर नहीं आया'",
+    send: "भेजो",
+    scoreLabel: "स्कोर",
+    emotionLabel: "भावना",
+    actionLabel: "कार्रवाई",
+    emptyText: "शुरू करने के लिए कुछ लिखो",
+    connecting: "जोड़ा जा रहा है...",
+    connected: "लाइव है",
+    disconnected: "कनेक्शन टूटा",
+    actions: { ESCALATE:"🚨 एजेंट को भेजो", NORMAL:"💬 सामान्य जवाब", UPSELL:"🎁 ऑफर भेजो" },
+    emotions: { angry:"गुस्सा 😠", frustrated:"परेशान 😤", neutral:"सामान्य 😐", happy:"खुश 😊", grateful:"शुक्रगुज़ार 🙏", curious:"जिज्ञासु 🤔" }
+  }
+};
+
+let lang = 'en';
+
+function setLang(l, btn) {
+  lang = l;
+  document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const T = t[lang];
+  document.getElementById('subtitle').textContent = T.subtitle;
+  document.getElementById('msg').placeholder = T.placeholder;
+  document.getElementById('sendBtn').textContent = T.send;
+  document.getElementById('scoreLabel').textContent = T.scoreLabel;
+  document.getElementById('emptyText').textContent = T.emptyText;
+}
+
+// WebSocket
+const ws = new WebSocket("ws://localhost:8000/ws");
+const dot = document.getElementById('statusDot');
+const statusText = document.getElementById('statusText');
+
+ws.onopen = () => {
+  dot.style.background = 'var(--green)';
+  dot.style.boxShadow = '0 0 8px var(--green)';
+  statusText.textContent = t[lang].connected;
+};
+ws.onclose = () => {
+  dot.style.background = 'var(--red)';
+  dot.style.boxShadow = '0 0 8px var(--red)';
+  statusText.textContent = t[lang].disconnected;
+};
+
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  const T = t[lang];
+
+  // Update meter
+  const pct = Math.round(data.score * 100);
+  document.getElementById('meterFill').style.width = pct + '%';
+  document.getElementById('meterFill').style.backgroundPosition = (100 - pct) + '% 0';
+  document.getElementById('meterVal').textContent = data.score.toFixed(1);
+
+  // Remove empty state
+  const empty = document.getElementById('emptyState');
+  if (empty) empty.remove();
+
+  const emotion = T.emotions[data.emotion] || data.emotion;
+  const action = T.actions[data.action] || data.action;
+
+  const div = document.createElement('div');
+  div.className = `msg ${data.action}`;
+  div.innerHTML = `
+    <div class="msg-top">
+      <div class="msg-text">📩 "${data.message}"</div>
+      <span class="badge ${data.action}">${data.action}</span>
+    </div>
+    <div class="msg-meta">
+      <div class="meta-item">
+        <span class="meta-label">${T.scoreLabel}</span>
+        <span class="meta-val">${data.score.toFixed(2)}</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">${T.emotionLabel}</span>
+        <span class="meta-val">${emotion}</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">${T.actionLabel}</span>
+        <span class="meta-val">${action}</span>
+      </div>
+    </div>
+    <div class="msg-mini-bar">
+      <div class="msg-mini-fill" style="width:${pct}%;background-position:${100-pct}% 0"></div>
+    </div>
+  `;
+
+  const output = document.getElementById('output');
+  output.insertBefore(div, output.firstChild);
+};
+
+function send() {
+  const input = document.getElementById('msg');
+  if (input.value.trim() && ws.readyState === WebSocket.OPEN) {
+    ws.send(input.value.trim());
+    input.value = '';
+  }
+}
+
+document.getElementById('msg').addEventListener('keypress', e => {
+  if (e.key === 'Enter') send();
+});
+
+// Set initial placeholder
+document.getElementById('msg').placeholder = t[lang].placeholder;
+</script>
+</body>
+</html>
