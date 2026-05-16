@@ -1,0 +1,7 @@
+backend/.env
+*.env
+__pycache__/
+*.pyc
+smartcare.db
+node_modules/
+dist/
