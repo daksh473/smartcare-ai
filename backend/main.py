@@ -6,6 +6,10 @@ from ai.bot_reply import generate_reply
 from database import init_db, save_conversation, get_all_conversations
 from dotenv import load_dotenv
 import json
+import asyncio
+from ai.proactive_alerts import proactive_alert_cron
+
+from routers import tickets, conversation, knowledge, analytics, voice
 
 load_dotenv()
 init_db()  # DB start pe initialize hoga
@@ -18,6 +22,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(proactive_alert_cron())
+
+app.include_router(tickets.router)
+app.include_router(conversation.router)
+app.include_router(knowledge.router)
+app.include_router(analytics.router)
+app.include_router(voice.router)
 
 class MessageRequest(BaseModel):
     message: str

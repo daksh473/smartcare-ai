@@ -7,22 +7,33 @@ load_dotenv()
 
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-SYSTEM_PROMPT = """You are a sentiment analyzer. Analyze the user message and return 
-ONLY a JSON like this: {"score": 0.2, "emotion": "frustrated"}
-Score is 0.0 (very negative) to 1.0 (very positive). Nothing else."""
+SYSTEM_PROMPT = """You are a sentiment analyzer and customer support triager. 
+Analyze the user message and return ONLY a JSON with this structure:
+{"score": 0.2, "emotion": "frustrated", "intent": "refund_request", "urgency_level": "HIGH"}
 
-def analyze_sentiment(message: str) -> dict:
+Score is 0.0 (very negative) to 1.0 (very positive).
+Intents should be things like: refund_request, order_status, complaint, legal_threat, general_inquiry, reschedule_appointment.
+Urgency levels: CRITICAL, HIGH, MEDIUM, LOW.
+Return ONLY valid JSON. Nothing else."""
+
+def classify_ticket(message: str) -> dict:
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": message}
         ],
-        max_tokens=50,
+        max_tokens=100,
         temperature=0
     )
     raw = response.choices[0].message.content.strip()
     return json.loads(raw)
+
+def analyze_sentiment(message: str) -> dict:
+    # For backward compatibility
+    res = classify_ticket(message)
+    return {"score": res.get("score", 0.5), "emotion": res.get("emotion", "neutral")}
+
 
 def decide_action(score: float) -> str:
     if score < 0.3:
@@ -46,6 +57,6 @@ if __name__ == "__main__":
     print("-" * 75)
     
     for msg in test_messages:
-        result = analyze_sentiment(msg)
-        action = decide_action(result["score"])
-        print(f"{msg[:38]:<40} {result['score']:<8} {result['emotion']:<12} {action}")
+        result = classify_ticket(msg)
+        action = decide_action(result.get("score", 0.5))
+        print(f"{msg[:38]:<40} {result.get('score'):<8} {result.get('emotion'):<12} {action} {result.get('intent')} {result.get('urgency_level')}")
