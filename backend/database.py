@@ -13,6 +13,9 @@ def init_db():
     cursor.execute('DROP TABLE IF EXISTS knowledge_base')
     cursor.execute('DROP TABLE IF EXISTS voice_metadata')
     cursor.execute('DROP TABLE IF EXISTS emails')
+    cursor.execute('DROP TABLE IF EXISTS customers')
+    cursor.execute('DROP TABLE IF EXISTS deals')
+    cursor.execute('DROP TABLE IF EXISTS activities')
     
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS tickets (
@@ -74,6 +77,55 @@ def init_db():
             reply_sent_at TEXT,
             received_at TEXT,
             status TEXT DEFAULT 'pending'
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS customers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            email TEXT UNIQUE,
+            phone TEXT,
+            company TEXT,
+            source TEXT,
+            status TEXT DEFAULT 'lead',
+            risk_score REAL DEFAULT 0.5,
+            total_conversations INTEGER DEFAULT 0,
+            avg_sentiment REAL DEFAULT 0.5,
+            total_tickets INTEGER DEFAULT 0,
+            revenue_generated REAL DEFAULT 0,
+            created_at TEXT,
+            last_contact TEXT,
+            notes TEXT
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS deals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            customer_id INTEGER,
+            title TEXT,
+            value REAL,
+            stage TEXT,
+            probability INTEGER,
+            expected_close TEXT,
+            created_at TEXT,
+            updated_at TEXT,
+            notes TEXT,
+            FOREIGN KEY (customer_id) REFERENCES customers(id)
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS activities (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            customer_id INTEGER,
+            deal_id INTEGER,
+            type TEXT,
+            description TEXT,
+            sentiment_score REAL,
+            created_at TEXT,
+            FOREIGN KEY (customer_id) REFERENCES customers(id)
         )
     ''')
     
@@ -454,4 +506,195 @@ def get_email_stats():
         "replied": replied,
         "escalated": escalated,
         "avg_sentiment": round(avg_score, 3) if avg_score else 0.0
+    }
+
+# ==========================================
+# CRM DATABASE FUNCTIONS
+# ==========================================
+
+def get_customers():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM customers ORDER BY created_at DESC')
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def get_customer(customer_id):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM customers WHERE id = ?', (customer_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def create_customer(name, email, phone, company, source, notes):
+    from datetime import datetime
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    try:
+        cursor.execute('''
+            INSERT INTO customers (name, email, phone, company, source, created_at, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (name, email, phone, company, source, datetime.now().isoformat(), notes))
+        conn.commit()
+        customer_id = cursor.lastrowid
+    except sqlite3.IntegrityError:
+        cursor.execute('SELECT id FROM customers WHERE email = ?', (email,))
+        customer_id = cursor.fetchone()[0]
+    conn.close()
+    return customer_id
+
+def update_customer(customer_id, data):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    fields = []
+    values = []
+    for k, v in data.items():
+        fields.append(f"{k} = ?")
+        values.append(v)
+    values.append(customer_id)
+    cursor.execute(f'''
+        UPDATE customers SET {', '.join(fields)} WHERE id = ?
+    ''', tuple(values))
+    conn.commit()
+    conn.close()
+
+def delete_customer(customer_id):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM customers WHERE id = ?', (customer_id,))
+    cursor.execute('DELETE FROM activities WHERE customer_id = ?', (customer_id,))
+    cursor.execute('DELETE FROM deals WHERE customer_id = ?', (customer_id,))
+    conn.commit()
+    conn.close()
+
+def log_activity(customer_id, type_str, description, sentiment_score=None, deal_id=None):
+    from datetime import datetime
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT INTO activities (customer_id, deal_id, type, description, sentiment_score, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+    ''', (customer_id, deal_id, type_str, description, sentiment_score, datetime.now().isoformat()))
+    
+    # Update customer last_contact and re-calculate averages
+    cursor.execute('SELECT AVG(sentiment_score), COUNT(*) FROM activities WHERE customer_id = ? AND sentiment_score IS NOT NULL', (customer_id,))
+    res = cursor.fetchone()
+    avg_sent = res[0] or 0.5
+    total_convs = res[1] or 0
+    
+    cursor.execute('''
+        UPDATE customers 
+        SET last_contact = ?, avg_sentiment = ?, total_conversations = ?
+        WHERE id = ?
+    ''', (datetime.now().isoformat(), avg_sent, total_convs, customer_id))
+    
+    conn.commit()
+    conn.close()
+
+def get_customer_timeline(customer_id):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM activities WHERE customer_id = ? ORDER BY created_at DESC', (customer_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def create_deal(customer_id, title, value, stage, probability, expected_close, notes):
+    from datetime import datetime
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    now = datetime.now().isoformat()
+    cursor.execute('''
+        INSERT INTO deals (customer_id, title, value, stage, probability, expected_close, created_at, updated_at, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (customer_id, title, value, stage, probability, expected_close, now, now, notes))
+    conn.commit()
+    deal_id = cursor.lastrowid
+    conn.close()
+    return deal_id
+
+def get_deals():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT d.*, c.name as customer_name 
+        FROM deals d 
+        LEFT JOIN customers c ON d.customer_id = c.id
+        ORDER BY d.created_at DESC
+    ''')
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def update_deal(deal_id, data):
+    from datetime import datetime
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    fields = []
+    values = []
+    for k, v in data.items():
+        fields.append(f"{k} = ?")
+        values.append(v)
+    
+    fields.append("updated_at = ?")
+    values.append(datetime.now().isoformat())
+    
+    values.append(deal_id)
+    cursor.execute(f'''
+        UPDATE deals SET {', '.join(fields)} WHERE id = ?
+    ''', tuple(values))
+    conn.commit()
+    conn.close()
+
+def delete_deal(deal_id):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM deals WHERE id = ?', (deal_id,))
+    conn.commit()
+    conn.close()
+
+def get_crm_stats():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    cursor.execute('SELECT COUNT(*) FROM customers')
+    total_customers = cursor.fetchone()[0] or 0
+    
+    cursor.execute('SELECT COUNT(*) FROM customers WHERE risk_score < 0.3')
+    at_risk_customers = cursor.fetchone()[0] or 0
+    
+    cursor.execute('SELECT SUM(value) FROM deals')
+    total_deals_value = cursor.fetchone()[0] or 0
+    
+    cursor.execute('SELECT SUM(value) FROM deals WHERE stage = "won"')
+    won_deals_value = cursor.fetchone()[0] or 0
+    
+    cursor.execute('SELECT COUNT(*) FROM deals WHERE stage = "won"')
+    won_count = cursor.fetchone()[0] or 0
+    
+    cursor.execute('SELECT COUNT(*) FROM deals')
+    total_deals = cursor.fetchone()[0] or 0
+    
+    conversion_rate = (won_count / total_deals * 100) if total_deals > 0 else 0
+    
+    from datetime import datetime, timedelta
+    thirty_days_ago = (datetime.now() - timedelta(days=30)).isoformat()
+    cursor.execute('SELECT COUNT(*) FROM customers WHERE created_at > ?', (thirty_days_ago,))
+    new_this_month = cursor.fetchone()[0] or 0
+    
+    conn.close()
+    
+    return {
+        "total_customers": total_customers,
+        "new_this_month": new_this_month,
+        "total_deals_value": total_deals_value,
+        "won_deals_value": won_deals_value,
+        "conversion_rate": round(conversion_rate, 1),
+        "at_risk_customers": at_risk_customers
     }

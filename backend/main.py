@@ -9,7 +9,7 @@ import json
 import asyncio
 from ai.proactive_alerts import proactive_alert_cron
 
-from routers import tickets, conversation, knowledge, analytics, voice, email
+from routers import tickets, conversation, knowledge, analytics, voice, email, crm
 
 load_dotenv()
 init_db()  # DB start pe initialize hoga
@@ -34,6 +34,7 @@ app.include_router(knowledge.router)
 app.include_router(analytics.router)
 app.include_router(voice.router)
 app.include_router(email.router)
+app.include_router(crm.router)
 
 class MessageRequest(BaseModel):
     message: str

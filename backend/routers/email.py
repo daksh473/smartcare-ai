@@ -7,7 +7,10 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from dotenv import load_dotenv
-from database import save_email, get_all_emails, update_email_status, get_email_stats, create_ticket
+from database import (
+    save_email, get_all_emails, update_email_status, get_email_stats, create_ticket,
+    get_customers, create_customer, log_activity
+)
 from ai.sentiment_classifier import analyze_sentiment, decide_action
 from ai.bot_reply import generate_reply
 
@@ -75,12 +78,27 @@ def check_inbox(req: InboxCheckRequest):
                     result = analyze_sentiment(body)
                     action = decide_action(result["score"])
                     
+                    # Create ticket if needed
                     ticket_id = None
                     if action == "ESCALATE":
-                        # Create ticket
                         ticket_id = create_ticket(sender, f"Email: {subject}", result["score"])
                         
                     save_email(message_id, sender, subject, body, result["score"], result["emotion"], action, ticket_id, datetime.now().isoformat())
+                    
+                    # Auto CRM Linking
+                    customers = get_customers()
+                    clean_email = sender.split('<')[-1].strip('>')
+                    name = sender.split('<')[0].strip() or clean_email
+                    
+                    existing_cust = next((c for c in customers if c['email'] == clean_email), None)
+                    if existing_cust:
+                        cid = existing_cust['id']
+                    else:
+                        cid = create_customer(name, clean_email, None, None, "email", "")
+                        log_activity(cid, "note", "Auto-created from Email integration")
+                    
+                    log_activity(cid, "email", f"Received: {subject}", result["score"])
+                    
                     processed_count += 1
                     
         mail.close()

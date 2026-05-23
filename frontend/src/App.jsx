@@ -11,6 +11,7 @@ import KnowledgeBaseView from "./components/KnowledgeBaseView";
 import AnalyticsView from "./components/AnalyticsView";
 import VoiceView from "./components/VoiceView";
 import EmailView from "./components/EmailView";
+import CrmView from "./components/CrmView";
 
 /* ─────────────────────────────────────────────
    LANGUAGE PACK
@@ -283,9 +284,13 @@ export default function App() {
             <LayoutDashboard size={15} />
             <span>{T.sidebar.dashboard || "Dashboard"}</span>
           </button>
-          <button className={`sidebar-nav-btn ${activeView === "email" ? "active" : ""}`} onClick={() => setActiveView("email")}>
+          <button className={`sidebar-nav-btn ${activeView === 'email' ? 'active' : ''}`} onClick={() => setActiveView('email')}>
             <Mail size={15} />
             <span>{T.sidebar.email || "Email"}</span>
+          </button>
+          <button className={`sidebar-nav-btn ${activeView === 'crm' ? 'active' : ''}`} onClick={() => setActiveView('crm')}>
+            <Users size={15} />
+            <span>CRM</span>
           </button>
           <button className={`sidebar-nav-btn ${activeView === "livechat" ? "active" : ""}`} onClick={() => setActiveView("livechat")}>
             <MessageSquare size={15} />
@@ -392,6 +397,8 @@ export default function App() {
             <KnowledgeBaseView />
           ) : activeView === "email" ? (
             <EmailView />
+          ) : activeView === "crm" ? (
+            <CrmView />
           ) : activeView === "analytics" ? (
             <AnalyticsView />
           ) : activeView === "livechat" ? (
