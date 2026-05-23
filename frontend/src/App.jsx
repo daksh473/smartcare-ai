@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Plus, ArrowUp, MessageSquare, BarChart3, Settings,
-  CircleDot, AlertTriangle, X, Clock, Wifi, Inbox, LayoutDashboard, Database, Mic, Mail
+  CircleDot, AlertTriangle, X, Clock, Wifi, Inbox, LayoutDashboard, Database, Mic, Mail, Users
 } from "lucide-react";
 import "./App.css";
 import SettingsView from "./SettingsView";
