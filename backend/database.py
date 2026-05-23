@@ -12,6 +12,7 @@ def init_db():
     cursor.execute('DROP TABLE IF EXISTS conversations')
     cursor.execute('DROP TABLE IF EXISTS knowledge_base')
     cursor.execute('DROP TABLE IF EXISTS voice_metadata')
+    cursor.execute('DROP TABLE IF EXISTS emails')
     
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS tickets (
@@ -55,6 +56,24 @@ def init_db():
             language TEXT,
             confidence REAL,
             timestamp TEXT NOT NULL
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS emails (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            message_id TEXT UNIQUE,
+            sender TEXT,
+            subject TEXT,
+            body TEXT,
+            sentiment_score REAL,
+            emotion TEXT,
+            action TEXT,
+            ticket_id INTEGER,
+            reply_sent TEXT,
+            reply_sent_at TEXT,
+            received_at TEXT,
+            status TEXT DEFAULT 'pending'
         )
     ''')
     
@@ -382,4 +401,57 @@ def get_voice_analytics():
         "total_voice_conversations": total_voice,
         "most_common_language": most_common_lang,
         "avg_confidence_score": avg_confidence
+    }
+
+def save_email(message_id, sender, subject, body, score, emotion, action, ticket_id, received_at):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    try:
+        cursor.execute('''
+            INSERT INTO emails (message_id, sender, subject, body, sentiment_score, emotion, action, ticket_id, received_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (message_id, sender, subject, body, score, emotion, action, ticket_id, received_at))
+        conn.commit()
+    except sqlite3.IntegrityError:
+        pass # Already exists
+    conn.close()
+
+def get_all_emails():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM emails ORDER BY received_at DESC')
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def update_email_status(email_id, status, reply_sent, reply_sent_at):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+        UPDATE emails SET status = ?, reply_sent = ?, reply_sent_at = ? WHERE id = ?
+    ''', (status, reply_sent, reply_sent_at, email_id))
+    conn.commit()
+    conn.close()
+
+def get_email_stats():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('SELECT COUNT(*) FROM emails')
+    total = cursor.fetchone()[0]
+    cursor.execute('SELECT COUNT(*) FROM emails WHERE status = "pending"')
+    pending = cursor.fetchone()[0]
+    cursor.execute('SELECT COUNT(*) FROM emails WHERE status = "replied"')
+    replied = cursor.fetchone()[0]
+    cursor.execute('SELECT COUNT(*) FROM emails WHERE action = "ESCALATE"')
+    escalated = cursor.fetchone()[0]
+    cursor.execute('SELECT AVG(sentiment_score) FROM emails')
+    avg_score = cursor.fetchone()[0]
+    conn.close()
+    return {
+        "total_received": total,
+        "pending": pending,
+        "replied": replied,
+        "escalated": escalated,
+        "avg_sentiment": round(avg_score, 3) if avg_score else 0.0
     }

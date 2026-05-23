@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Plus, ArrowUp, MessageSquare, BarChart3, Settings,
-  CircleDot, AlertTriangle, X, Clock, Wifi, Inbox, LayoutDashboard, Database, Mic
+  CircleDot, AlertTriangle, X, Clock, Wifi, Inbox, LayoutDashboard, Database, Mic, Mail
 } from "lucide-react";
 import "./App.css";
 import SettingsView from "./SettingsView";
@@ -10,6 +10,7 @@ import TicketsView from "./components/TicketsView";
 import KnowledgeBaseView from "./components/KnowledgeBaseView";
 import AnalyticsView from "./components/AnalyticsView";
 import VoiceView from "./components/VoiceView";
+import EmailView from "./components/EmailView";
 
 /* ─────────────────────────────────────────────
    LANGUAGE PACK
@@ -49,6 +50,7 @@ const LANG = {
       livechat: "Live Chat",
       voice: "Voice",
       dashboard: "Dashboard",
+      email: "Email",
       tickets: "Tickets",
       analytics: "Analytics",
       knowledge: "Knowledge Base"
@@ -281,6 +283,10 @@ export default function App() {
             <LayoutDashboard size={15} />
             <span>{T.sidebar.dashboard || "Dashboard"}</span>
           </button>
+          <button className={`sidebar-nav-btn ${activeView === "email" ? "active" : ""}`} onClick={() => setActiveView("email")}>
+            <Mail size={15} />
+            <span>{T.sidebar.email || "Email"}</span>
+          </button>
           <button className={`sidebar-nav-btn ${activeView === "livechat" ? "active" : ""}`} onClick={() => setActiveView("livechat")}>
             <MessageSquare size={15} />
             <span>{T.sidebar.livechat || "Live Chat"}</span>
@@ -384,6 +390,8 @@ export default function App() {
             <TicketsView />
           ) : activeView === "knowledge" ? (
             <KnowledgeBaseView />
+          ) : activeView === "email" ? (
+            <EmailView />
           ) : activeView === "analytics" ? (
             <AnalyticsView />
           ) : activeView === "livechat" ? (

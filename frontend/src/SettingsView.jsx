@@ -9,6 +9,26 @@ export default function SettingsView({ lang, setLang }) {
 
   const retentionLabels = ['24 Hours', '1 Week', '1 Month', 'All Data'];
 
+  // Support Email Config
+  const [emailHost, setEmailHost] = useState(localStorage.getItem("emailHost") || "");
+  const [emailPort, setEmailPort] = useState(localStorage.getItem("emailPort") || "587");
+  const [emailUser, setEmailUser] = useState(localStorage.getItem("emailUser") || "");
+  const [emailPass, setEmailPass] = useState(localStorage.getItem("emailPass") || "");
+
+  const handleSave = () => {
+    localStorage.setItem("theme", theme);
+    localStorage.setItem("language", lang);
+    localStorage.setItem("emailHost", emailHost);
+    localStorage.setItem("emailPort", emailPort);
+    localStorage.setItem("emailUser", emailUser);
+    localStorage.setItem("emailPass", emailPass);
+    alert("Settings saved!");
+  };
+
+  const testEmailConnection = () => {
+    alert("Testing IMAP/SMTP connection... (Mock success)\nConnected successfully to " + emailHost);
+  };
+
   const handleWipe = () => {
     // Mock wipe action
     alert(`Data wipe executed for retention level: ${retentionLabels[retention]}`);
@@ -81,6 +101,76 @@ export default function SettingsView({ lang, setLang }) {
                     <Globe className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" size={16} />
                   </div>
                 </div>
+              </div>
+            </div>
+          </section>
+          </div>
+
+          {/* Panel 1.5: Support Email Config */}
+          <div style={{ marginBottom: '36px', display: 'block' }}>
+            <section className="bg-[#18191c] border border-[#2a2b2f] rounded-xl p-6 shadow-xl">
+              <div className="flex items-center gap-3 border-b border-[#2a2b2f] pb-4" style={{ marginBottom: '16px', display: 'flex' }}>
+              <h2 className="text-lg font-semibold text-white">Support Email Configuration</h2>
+            </div>
+            
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm text-gray-400 font-medium">SMTP/IMAP Host</label>
+                  <input 
+                    type="text" 
+                    className="bg-[#111214] border border-[#2a2b2f] text-white rounded-md px-4 py-2.5 text-sm focus:outline-none focus:border-[#10b981] transition-all"
+                    placeholder="e.g. smtp.gmail.com" 
+                    value={emailHost} 
+                    onChange={e => setEmailHost(e.target.value)} 
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm text-gray-400 font-medium">Port</label>
+                  <input 
+                    type="text" 
+                    className="bg-[#111214] border border-[#2a2b2f] text-white rounded-md px-4 py-2.5 text-sm focus:outline-none focus:border-[#10b981] transition-all"
+                    placeholder="e.g. 587" 
+                    value={emailPort} 
+                    onChange={e => setEmailPort(e.target.value)} 
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm text-gray-400 font-medium">Email Address</label>
+                  <input 
+                    type="email" 
+                    className="bg-[#111214] border border-[#2a2b2f] text-white rounded-md px-4 py-2.5 text-sm focus:outline-none focus:border-[#10b981] transition-all"
+                    placeholder="support@company.com" 
+                    value={emailUser} 
+                    onChange={e => setEmailUser(e.target.value)} 
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm text-gray-400 font-medium">App Password</label>
+                  <input 
+                    type="password" 
+                    className="bg-[#111214] border border-[#2a2b2f] text-white rounded-md px-4 py-2.5 text-sm focus:outline-none focus:border-[#10b981] transition-all"
+                    placeholder="••••••••••••" 
+                    value={emailPass} 
+                    onChange={e => setEmailPass(e.target.value)} 
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-4 pt-2">
+                <button 
+                  onClick={testEmailConnection}
+                  className="bg-[#2a2b2f] hover:bg-[#3f4045] text-white px-4 py-2 rounded-md text-sm font-semibold transition-all"
+                >
+                  Test Connection
+                </button>
+                <button 
+                  onClick={handleSave}
+                  className="bg-[#10b981]/10 text-[#10b981] border border-[#10b981]/50 hover:bg-[#10b981] hover:text-white px-4 py-2 rounded-md text-sm font-semibold transition-all"
+                >
+                  Save Settings
+                </button>
               </div>
             </div>
           </section>
