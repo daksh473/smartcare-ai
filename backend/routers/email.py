@@ -26,16 +26,22 @@ class ReplyRequest(BaseModel):
     email_id: int
     custom_reply: str = None
 
+class InboxCheckRequest(BaseModel):
+    email: str
+    password: str
+    imap_host: str = "imap.gmail.com"
+    imap_port: int = 993
+
 @router.post("/check-inbox")
-def check_inbox():
+def check_inbox(req: InboxCheckRequest):
     """Connect to IMAP, fetch last 10 unread, analyze sentiment, store in DB."""
-    if not EMAIL_USER or not EMAIL_PASSWORD:
+    if not req.email or not req.password:
         # Mock mode if no credentials
-        return {"processed": 0, "mock": True, "error": "No email credentials found in .env"}
+        return {"processed": 0, "mock": True, "error": "No email credentials provided"}
         
     try:
-        mail = imaplib.IMAP4_SSL(IMAP_HOST)
-        mail.login(EMAIL_USER, EMAIL_PASSWORD)
+        mail = imaplib.IMAP4_SSL(req.imap_host, req.imap_port)
+        mail.login(req.email, req.password)
         mail.select('inbox')
 
         status, messages = mail.search(None, 'UNSEEN')

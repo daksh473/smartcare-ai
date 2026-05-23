@@ -63,7 +63,22 @@ export default function EmailView() {
   const handleCheckInbox = async () => {
     setChecking(true);
     try {
-      await fetch(`${API}/email/check-inbox`, { method: "POST" });
+      const email = localStorage.getItem("emailUser") || "";
+      const password = localStorage.getItem("emailPass") || "";
+      const imap_host = localStorage.getItem("emailHost") || "imap.gmail.com";
+      
+      const payload = {
+        email,
+        password,
+        imap_host,
+        imap_port: 993
+      };
+
+      await fetch(`${API}/email/check-inbox`, { 
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
       await fetchData();
     } catch (e) {
       console.error(e);
