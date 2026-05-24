@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Users, Target, Activity, DollarSign, Brain, Search, Plus, Trash2, Calendar, FileText, ArrowLeft, Mail, MessageSquare, Mic, Ticket } from "lucide-react";
+import { Users, Target, Activity, DollarSign, Brain, Search, Plus, Trash2, Calendar, FileText, ArrowLeft, Mail, MessageSquare, Mic, Ticket, X } from "lucide-react";
 import "./CrmView.css";
 
 const API = "http://localhost:8000";
@@ -70,15 +70,21 @@ export default function CrmView() {
   }, [selectedProfileId, activeTab]);
 
   const loadProfile = async (id) => {
+    console.log("Fetching profile data for ID:", id);
+    // Show loading state by setting profileData to null initially
+    setProfileData(null);
     try {
       const res = await fetch(`${API}/crm/customers/${id}/profile`);
       if (res.ok) {
         const data = await res.json();
+        console.log("Profile Data loaded:", data);
         setProfileData(data);
-        setNewNote(data.profile.notes || "");
+        setNewNote(data?.profile?.notes || "");
+      } else {
+        console.error("API returned error status:", res.status);
       }
     } catch(e) {
-      console.error(e);
+      console.error("Failed to load profile:", e);
     }
   };
 
@@ -431,7 +437,11 @@ export default function CrmView() {
         )}
 
         {/* ================= FULL PAGE PROFILE TAB ================= */}
-        {activeTab === "profile" && profileData && (
+        {activeTab === "profile" && !profileData && (
+          <div className="crm-loading">Loading customer profile...</div>
+        )}
+        
+        {activeTab === "profile" && profileData && profileData.profile && (
           <div className="crm-profile-view animate-in fade-in">
             <div className="profile-grid-3">
               
@@ -445,16 +455,16 @@ export default function CrmView() {
                   <div className="text-sm text-gray-400 mb-4">{profileData.profile.email}</div>
                   
                   <div className="flex justify-center gap-2 mb-6">
-                    <span className="crm-badge" style={{background: STATUS_COLORS[profileData.profile.status]?.bg, color: STATUS_COLORS[profileData.profile.status]?.text}}>
-                      {profileData.profile.status.toUpperCase()}
+                    <span className="crm-badge" style={{background: STATUS_COLORS[profileData.profile.status || 'lead']?.bg, color: STATUS_COLORS[profileData.profile.status || 'lead']?.text}}>
+                      {(profileData.profile.status || 'lead').toUpperCase()}
                     </span>
-                    <span className="badge-small bg-gray-800">{profileData.profile.source}</span>
+                    <span className="badge-small bg-gray-800">{profileData.profile.source || 'manual'}</span>
                   </div>
 
                   <div className="risk-dial-container mb-6">
-                    <div className="risk-dial" style={{background: `conic-gradient(${getRiskColor(profileData.profile.risk_score)} ${profileData.profile.risk_score * 100}%, #222 0)`}}>
+                    <div className="risk-dial" style={{background: `conic-gradient(${getRiskColor(profileData.profile.risk_score || 0)} ${(profileData.profile.risk_score || 0) * 100}%, #222 0)`}}>
                       <div className="risk-dial-inner">
-                        <span style={{color: getRiskColor(profileData.profile.risk_score)}}>{profileData.profile.risk_score.toFixed(2)}</span>
+                        <span style={{color: getRiskColor(profileData.profile.risk_score || 0)}}>{(profileData.profile.risk_score || 0).toFixed(2)}</span>
                       </div>
                     </div>
                     <div className="text-xs text-gray-500 mt-2">AI Risk Score</div>
@@ -465,11 +475,11 @@ export default function CrmView() {
                 <div className="prof-card">
                   <h4>Quick Stats</h4>
                   <div className="stats-list">
-                    <div className="stat-row"><span>Interactions:</span> <strong>{profileData.total_interactions}</strong></div>
-                    <div className="stat-row"><span>Avg Sentiment:</span> <strong>{profileData.profile.avg_sentiment.toFixed(2)}</strong></div>
-                    <div className="stat-row"><span>Total Revenue:</span> <strong>${profileData.profile.revenue_generated.toLocaleString()}</strong></div>
-                    <div className="stat-row"><span>Open Tickets:</span> <strong>{profileData.tickets.filter(t=>t.status !== 'resolved').length}</strong></div>
-                    <div className="stat-row"><span>First Contact:</span> <strong>{new Date(profileData.profile.created_at).toLocaleDateString()}</strong></div>
+                    <div className="stat-row"><span>Interactions:</span> <strong>{profileData.total_interactions || 0}</strong></div>
+                    <div className="stat-row"><span>Avg Sentiment:</span> <strong>{(profileData.profile.avg_sentiment || 0).toFixed(2)}</strong></div>
+                    <div className="stat-row"><span>Total Revenue:</span> <strong>${(profileData.profile.revenue_generated || 0).toLocaleString()}</strong></div>
+                    <div className="stat-row"><span>Open Tickets:</span> <strong>{(profileData.tickets || []).filter(t=>t.status !== 'resolved').length}</strong></div>
+                    <div className="stat-row"><span>First Contact:</span> <strong>{profileData.profile.created_at ? new Date(profileData.profile.created_at).toLocaleDateString() : '-'}</strong></div>
                   </div>
                 </div>
 
@@ -526,7 +536,7 @@ export default function CrmView() {
                   <h4>Activity Timeline</h4>
                   <div className="timeline-container">
                     <div className="timeline">
-                      {profileData.timeline.length > 0 ? profileData.timeline.map((t, i) => (
+                      {profileData.timeline && profileData.timeline.length > 0 ? profileData.timeline.map((t, i) => (
                         <div key={i} className="timeline-item">
                           <div className="t-dot t-dot-icon">{getIconForType(t.type)}</div>
                           <div className="t-content">
@@ -572,7 +582,7 @@ export default function CrmView() {
                     <button className="btn-outline-small" onClick={() => { setNewDeal({...newDeal, customer_id: selectedProfileId}); setShowAddDeal(true); }}><Plus size={12}/></button>
                   </div>
                   <div className="linked-list">
-                    {profileData.deals.length > 0 ? profileData.deals.map(d => (
+                    {profileData.deals && profileData.deals.length > 0 ? profileData.deals.map(d => (
                       <div key={d.id} className="linked-item">
                         <div className="font-semibold">{d.title}</div>
                         <div className="flex-between text-sm mt-1">
@@ -587,7 +597,7 @@ export default function CrmView() {
                 <div className="prof-card">
                   <h4>Support Tickets</h4>
                   <div className="linked-list">
-                    {profileData.tickets.length > 0 ? profileData.tickets.map(t => (
+                    {profileData.tickets && profileData.tickets.length > 0 ? profileData.tickets.map(t => (
                       <div key={t.id} className="linked-item">
                         <div className="text-sm font-semibold truncate">#{t.id} - {t.issue}</div>
                         <div className="flex-between text-xs mt-1 text-gray-400">
