@@ -94,28 +94,46 @@ def generate_forecast(deals):
 
 def generate_customer_summary(customer_data, timeline):
     """
-    Generates a brief overview of the customer relationship.
+    Generates a brief overview of the customer relationship, risk level, and recommendations.
     """
-    timeline_summary = "\\n".join([f"[{t['created_at']}] {t['type']}: {t['description']}" for t in timeline[-10:]])
+    timeline_summary = "\\n".join([f"[{t['created_at']}] {t.get('type','N/A')}: {t.get('description','N/A')}" for t in timeline[-15:]])
     
     prompt = f"""
-    Write a concise, 2-3 sentence executive summary of the relationship with this customer.
-    Customer: {customer_data['name']} (Company: {customer_data['company']})
+    Write a concise, 3-4 sentence executive summary of the relationship with this customer.
+    Customer: {customer_data['name']} (Company: {customer_data.get('company', 'N/A')})
     
     Recent Activity:
     {timeline_summary}
+    
+    Provide your response in JSON format with three keys:
+    1. "summary": A natural language paragraph explaining their history, contact frequency, sentiment trend, and key issues.
+    2. "risk_level": A short string (e.g. "Low Risk", "Medium Risk", "High Risk").
+    3. "recommended_action": A 1-sentence recommended action for the support/sales team.
+    
+    Respond ONLY with valid JSON.
     """
     
     try:
         response = groq_client.chat.completions.create(
             model=MODEL_NAME,
             messages=[
-                {"role": "system", "content": "You are a helpful CRM assistant."},
+                {"role": "system", "content": "You are a helpful CRM AI assistant. Output ONLY valid JSON."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.5
         )
-        return response.choices[0].message.content.strip()
+        content = response.choices[0].message.content.strip()
+        if content.startswith("```json"):
+            content = content[7:-3].strip()
+        elif content.startswith("```"):
+            content = content[3:-3].strip()
+            
+        data = json.loads(content)
+        return data
     except Exception as e:
         print(f"Summary AI Error: {e}")
-        return "Failed to generate summary."
+        return {
+            "summary": "Failed to generate summary.",
+            "risk_level": "Unknown",
+            "recommended_action": "Check system logs."
+        }

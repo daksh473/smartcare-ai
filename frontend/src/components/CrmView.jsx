@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Users, Target, Activity, DollarSign, Brain, Search, Plus, Trash2, Calendar, FileText } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Users, Target, Activity, DollarSign, Brain, Search, Plus, Trash2, Calendar, FileText, ArrowLeft, Mail, MessageSquare, Mic, Ticket } from "lucide-react";
 import "./CrmView.css";
 
 const API = "http://localhost:8000";
@@ -25,9 +25,14 @@ export default function CrmView() {
   const [pipeline, setPipeline] = useState({});
   const [loading, setLoading] = useState(true);
 
-  // Modals
-  const [selectedCustomer, setSelectedCustomer] = useState(null);
-  const [customerTimeline, setCustomerTimeline] = useState([]);
+  // Profile specific
+  const [selectedProfileId, setSelectedProfileId] = useState(null);
+  const [profileData, setProfileData] = useState(null);
+  const [aiSummary, setAiSummary] = useState(null);
+  const [generatingSummary, setGeneratingSummary] = useState(false);
+  const [newNote, setNewNote] = useState("");
+  const [newTag, setNewTag] = useState("");
+
   const [forecastData, setForecastData] = useState(null);
   const [forecasting, setForecasting] = useState(false);
   const [showAddDeal, setShowAddDeal] = useState(false);
@@ -52,7 +57,30 @@ export default function CrmView() {
     }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { 
+    if(activeTab !== "profile") {
+      fetchData(); 
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === "profile" && selectedProfileId) {
+      loadProfile(selectedProfileId);
+    }
+  }, [selectedProfileId, activeTab]);
+
+  const loadProfile = async (id) => {
+    try {
+      const res = await fetch(`${API}/crm/customers/${id}/profile`);
+      if (res.ok) {
+        const data = await res.json();
+        setProfileData(data);
+        setNewNote(data.profile.notes || "");
+      }
+    } catch(e) {
+      console.error(e);
+    }
+  };
 
   // Actions
   const handleGenerateForecast = async () => {
@@ -67,39 +95,101 @@ export default function CrmView() {
     }
   };
 
-  const openCustomer = async (cust) => {
-    setSelectedCustomer(cust);
+  const openCustomer = (cust) => {
+    setSelectedProfileId(cust.id);
+    setActiveTab("profile");
+    setAiSummary(null); // reset
+  };
+
+  const generateRiskScore = async () => {
+    if(!selectedProfileId) return;
     try {
-      const res = await fetch(`${API}/crm/customers/${cust.id}/timeline`);
-      setCustomerTimeline(await res.json());
+      const res = await fetch(`${API}/crm/customers/${selectedProfileId}/recalculate-risk`, { method: "POST" });
+      const data = await res.json();
+      alert(`AI Risk Analysis:\nScore: ${data.risk_score}\nReason: ${data.reason}\nAction: ${data.recommendation}`);
+      loadProfile(selectedProfileId);
     } catch (e) {
       console.error(e);
     }
   };
 
-  const generateRiskScore = async () => {
-    if(!selectedCustomer) return;
+  const handleGenerateSummary = async () => {
+    if(!selectedProfileId) return;
+    setGeneratingSummary(true);
     try {
-      const res = await fetch(`${API}/crm/customers/${selectedCustomer.id}/risk-score`, { method: "POST" });
+      const res = await fetch(`${API}/crm/customers/${selectedProfileId}/summary`, { method: "POST" });
       const data = await res.json();
-      setSelectedCustomer(prev => ({...prev, risk_score: data.risk_score}));
-      alert(`AI Risk Analysis:\nScore: ${data.risk_score}\nReason: ${data.reason}\nAction: ${data.recommendation}`);
-      fetchData();
-    } catch (e) {
+      setAiSummary(data);
+    } catch(e) {
       console.error(e);
+    } finally {
+      setGeneratingSummary(false);
     }
+  };
+
+  const handleUpdateNotes = async () => {
+    try {
+      await fetch(`${API}/crm/customers/${selectedProfileId}/update-notes`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes: newNote })
+      });
+      alert("Notes updated");
+      loadProfile(selectedProfileId);
+    } catch(e) { console.error(e); }
+  };
+
+  const handleAddTag = async (e) => {
+    e.preventDefault();
+    if(!newTag.trim()) return;
+    try {
+      const currentTags = profileData?.profile?.tags ? profileData.profile.tags.split(",").filter(t=>t) : [];
+      if(!currentTags.includes(newTag.trim())) {
+        currentTags.push(newTag.trim());
+        await fetch(`${API}/crm/customers/${selectedProfileId}/update-tags`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tags: currentTags.join(",") })
+        });
+        setNewTag("");
+        loadProfile(selectedProfileId);
+      }
+    } catch(e) { console.error(e); }
+  };
+
+  const removeTag = async (tagToRemove) => {
+    try {
+      const currentTags = profileData?.profile?.tags ? profileData.profile.tags.split(",").filter(t=>t) : [];
+      const newTags = currentTags.filter(t => t !== tagToRemove);
+      await fetch(`${API}/crm/customers/${selectedProfileId}/update-tags`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tags: newTags.join(",") })
+      });
+      loadProfile(selectedProfileId);
+    } catch(e) { console.error(e); }
   };
 
   const createDeal = async () => {
     try {
       await fetch(`${API}/crm/deals`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({...newDeal, customer_id: parseInt(newDeal.customer_id)})
+        body: JSON.stringify({...newDeal, customer_id: parseInt(newDeal.customer_id) || selectedProfileId})
       });
       setShowAddDeal(false);
-      fetchData();
+      if (activeTab === "profile") {
+        loadProfile(selectedProfileId);
+      } else {
+        fetchData();
+      }
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const deleteCustomer = async () => {
+    if(window.confirm("Are you sure you want to delete this customer? This cannot be undone.")) {
+      try {
+        await fetch(`${API}/crm/customers/${selectedProfileId}`, { method: "DELETE" });
+        setActiveTab("customers");
+      } catch(e) { console.error(e); }
     }
   };
 
@@ -126,24 +216,108 @@ export default function CrmView() {
     }
   };
 
+  const getInitials = (name) => {
+    if(!name) return "?";
+    return name.split(" ").map(n => n[0]).join("").substring(0,2).toUpperCase();
+  };
+
+  const getRiskColor = (score) => {
+    if(score < 0.3) return '#E5484D'; // Red
+    if(score < 0.7) return '#F5A623'; // Yellow
+    return '#30A46C'; // Green
+  };
+
+  // SVG Chart Generator for Sentiment Trend
+  const renderSentimentChart = (trend) => {
+    if(!trend || trend.length === 0) return <div className="text-gray-500 text-sm">Not enough data</div>;
+    
+    // Scale X from 0 to 100% of width
+    // Scale Y from 0 to 1 (score is 0-1), map to 100 to 0 (SVG y is inverted)
+    const points = trend.map((t, i) => {
+      const x = trend.length > 1 ? (i / (trend.length - 1)) * 100 : 50;
+      const y = 100 - (t.sentiment_score * 100);
+      return `${x},${y}`;
+    }).join(" ");
+
+    return (
+      <div className="sentiment-chart-wrapper">
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="sentiment-svg">
+          {/* Grid lines */}
+          <line x1="0" y1="25" x2="100" y2="25" stroke="rgba(255,255,255,0.05)" strokeWidth="0.5"/>
+          <line x1="0" y1="50" x2="100" y2="50" stroke="rgba(255,255,255,0.05)" strokeWidth="0.5"/>
+          <line x1="0" y1="75" x2="100" y2="75" stroke="rgba(255,255,255,0.05)" strokeWidth="0.5"/>
+          
+          <polyline
+            fill="none"
+            stroke="url(#gradient)"
+            strokeWidth="3"
+            points={points}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+          
+          <defs>
+            <linearGradient id="gradient" x1="0%" y1="100%" x2="0%" y2="0%">
+              <stop offset="0%" stopColor="#E5484D" />
+              <stop offset="50%" stopColor="#F5A623" />
+              <stop offset="100%" stopColor="#30A46C" />
+            </linearGradient>
+          </defs>
+
+          {/* Dots */}
+          {trend.map((t, i) => {
+            const x = trend.length > 1 ? (i / (trend.length - 1)) * 100 : 50;
+            const y = 100 - (t.sentiment_score * 100);
+            return (
+              <circle key={i} cx={x} cy={y} r="2" fill="#fff" className="chart-dot">
+                <title>{new Date(t.created_at).toLocaleDateString()}: {t.sentiment_score}</title>
+              </circle>
+            )
+          })}
+        </svg>
+        <div className="chart-labels">
+          <span>Oldest</span>
+          <span>Newest</span>
+        </div>
+      </div>
+    );
+  };
+
+  const getIconForType = (type) => {
+    switch(type) {
+      case 'email': return <Mail size={14} className="text-blue-400"/>;
+      case 'ticket': return <Ticket size={14} className="text-purple-400"/>;
+      case 'voice': return <Mic size={14} className="text-green-400"/>;
+      default: return <MessageSquare size={14} className="text-gray-400"/>;
+    }
+  };
+
   if (loading) return <div className="crm-loading">Loading CRM...</div>;
 
   return (
     <div className="crm-view">
       {/* HEADER NAV */}
       <div className="crm-header">
-        <h2 className="crm-title">SmartCare CRM</h2>
-        <div className="crm-tabs">
-          {["overview", "customers", "pipeline", "deals"].map(t => (
-            <button 
-              key={t} 
-              className={`crm-tab-btn ${activeTab === t ? "active" : ""}`}
-              onClick={() => setActiveTab(t)}
-            >
-              {t.charAt(0).toUpperCase() + t.slice(1)}
-            </button>
-          ))}
-        </div>
+        <h2 className="crm-title">
+          {activeTab === "profile" ? (
+            <div className="flex items-center gap-2 cursor-pointer hover:text-gray-300" onClick={() => setActiveTab("customers")}>
+              <ArrowLeft size={20} /> Back to Customers
+            </div>
+          ) : "SmartCare CRM"}
+        </h2>
+        {activeTab !== "profile" && (
+          <div className="crm-tabs">
+            {["overview", "customers", "pipeline", "deals"].map(t => (
+              <button 
+                key={t} 
+                className={`crm-tab-btn ${activeTab === t ? "active" : ""}`}
+                onClick={() => setActiveTab(t)}
+              >
+                {t.charAt(0).toUpperCase() + t.slice(1)}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="crm-content">
@@ -244,7 +418,7 @@ export default function CrmView() {
                     </td>
                     <td>
                       <div className="risk-bar-container">
-                        <div className="risk-bar-fill" style={{width: `${c.risk_score * 100}%`, background: c.risk_score < 0.3 ? '#E5484D' : '#30A46C'}}></div>
+                        <div className="risk-bar-fill" style={{width: `${c.risk_score * 100}%`, background: getRiskColor(c.risk_score)}}></div>
                       </div>
                     </td>
                     <td>{c.avg_sentiment.toFixed(2)}</td>
@@ -253,6 +427,181 @@ export default function CrmView() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* ================= FULL PAGE PROFILE TAB ================= */}
+        {activeTab === "profile" && profileData && (
+          <div className="crm-profile-view animate-in fade-in">
+            <div className="profile-grid-3">
+              
+              {/* LEFT PANEL */}
+              <div className="prof-col prof-left">
+                <div className="prof-card text-center relative">
+                  <div className="prof-avatar mx-auto" style={{borderColor: getRiskColor(profileData.profile.risk_score)}}>
+                    {getInitials(profileData.profile.name)}
+                  </div>
+                  <h3 className="mt-4 mb-1 text-xl font-bold">{profileData.profile.name}</h3>
+                  <div className="text-sm text-gray-400 mb-4">{profileData.profile.email}</div>
+                  
+                  <div className="flex justify-center gap-2 mb-6">
+                    <span className="crm-badge" style={{background: STATUS_COLORS[profileData.profile.status]?.bg, color: STATUS_COLORS[profileData.profile.status]?.text}}>
+                      {profileData.profile.status.toUpperCase()}
+                    </span>
+                    <span className="badge-small bg-gray-800">{profileData.profile.source}</span>
+                  </div>
+
+                  <div className="risk-dial-container mb-6">
+                    <div className="risk-dial" style={{background: `conic-gradient(${getRiskColor(profileData.profile.risk_score)} ${profileData.profile.risk_score * 100}%, #222 0)`}}>
+                      <div className="risk-dial-inner">
+                        <span style={{color: getRiskColor(profileData.profile.risk_score)}}>{profileData.profile.risk_score.toFixed(2)}</span>
+                      </div>
+                    </div>
+                    <div className="text-xs text-gray-500 mt-2">AI Risk Score</div>
+                    <button className="btn-outline-small w-full mt-3" onClick={generateRiskScore}><Brain size={12}/> Recalculate Risk</button>
+                  </div>
+                </div>
+
+                <div className="prof-card">
+                  <h4>Quick Stats</h4>
+                  <div className="stats-list">
+                    <div className="stat-row"><span>Interactions:</span> <strong>{profileData.total_interactions}</strong></div>
+                    <div className="stat-row"><span>Avg Sentiment:</span> <strong>{profileData.profile.avg_sentiment.toFixed(2)}</strong></div>
+                    <div className="stat-row"><span>Total Revenue:</span> <strong>${profileData.profile.revenue_generated.toLocaleString()}</strong></div>
+                    <div className="stat-row"><span>Open Tickets:</span> <strong>{profileData.tickets.filter(t=>t.status !== 'resolved').length}</strong></div>
+                    <div className="stat-row"><span>First Contact:</span> <strong>{new Date(profileData.profile.created_at).toLocaleDateString()}</strong></div>
+                  </div>
+                </div>
+
+                <div className="prof-card">
+                  <h4>Notes</h4>
+                  <textarea 
+                    className="notes-area" 
+                    value={newNote} 
+                    onChange={e => setNewNote(e.target.value)}
+                    placeholder="Add customer notes here..."
+                  />
+                  <button className="btn-outline-small mt-2 w-full" onClick={handleUpdateNotes}>Save Notes</button>
+                </div>
+
+                <button className="btn-outline-small text-red-500 border-red-900 w-full hover:bg-red-900" onClick={deleteCustomer}>
+                  <Trash2 size={14}/> Delete Customer
+                </button>
+              </div>
+
+              {/* MIDDLE PANEL */}
+              <div className="prof-col prof-middle">
+                <div className="prof-card ai-summary-card">
+                  <div className="flex-between mb-3">
+                    <h4 className="m-0 flex items-center gap-2"><Brain size={16} className="text-purple-400"/> AI Customer Summary</h4>
+                    <button className="btn-primary text-xs py-1" onClick={handleGenerateSummary} disabled={generatingSummary}>
+                      {generatingSummary ? "Thinking..." : "Generate Summary"}
+                    </button>
+                  </div>
+                  {aiSummary ? (
+                    <div className="ai-summary-content">
+                      <p className="summary-text">{aiSummary.summary}</p>
+                      <div className="summary-meta">
+                        <div className="meta-box">
+                          <span className="meta-label">Risk Level</span>
+                          <strong className={aiSummary.risk_level.includes("High") ? "text-red-400" : "text-green-400"}>{aiSummary.risk_level}</strong>
+                        </div>
+                        <div className="meta-box flex-1">
+                          <span className="meta-label">Recommended Action</span>
+                          <strong>{aiSummary.recommended_action}</strong>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-gray-500 text-sm italic py-4 text-center">Click generate to let AI analyze all past interactions and summarize this relationship.</div>
+                  )}
+                </div>
+
+                <div className="prof-card">
+                  <h4>Sentiment Trend (Last 10)</h4>
+                  {renderSentimentChart(profileData.sentiment_trend)}
+                </div>
+
+                <div className="prof-card flex-1 flex flex-col">
+                  <h4>Activity Timeline</h4>
+                  <div className="timeline-container">
+                    <div className="timeline">
+                      {profileData.timeline.length > 0 ? profileData.timeline.map((t, i) => (
+                        <div key={i} className="timeline-item">
+                          <div className="t-dot t-dot-icon">{getIconForType(t.type)}</div>
+                          <div className="t-content">
+                            <span className="t-time">{new Date(t.created_at).toLocaleString()}</span>
+                            <span className="t-type badge-small capitalize">{t.type}</span>
+                            <p>{t.description}</p>
+                            {t.sentiment_score !== null && (
+                              <span className="t-sent" style={{color: getRiskColor(t.sentiment_score)}}>
+                                Sentiment: {t.sentiment_score}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )) : <div className="text-gray-500 text-sm">No activity recorded yet.</div>}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* RIGHT PANEL */}
+              <div className="prof-col prof-right">
+                
+                <div className="prof-card">
+                  <div className="flex-between mb-3">
+                    <h4 className="m-0">Tags</h4>
+                  </div>
+                  <div className="tags-container mb-3">
+                    {(profileData.profile.tags ? profileData.profile.tags.split(",") : []).filter(t=>t).map((tag, i) => (
+                      <span key={i} className="tag-chip">
+                        {tag} <button onClick={() => removeTag(tag)}><X size={10}/></button>
+                      </span>
+                    ))}
+                  </div>
+                  <form onSubmit={handleAddTag} className="flex gap-2">
+                    <input type="text" className="input-small flex-1" placeholder="Add tag..." value={newTag} onChange={e=>setNewTag(e.target.value)} />
+                    <button type="submit" className="btn-outline-small">Add</button>
+                  </form>
+                </div>
+
+                <div className="prof-card">
+                  <div className="flex-between mb-3">
+                    <h4 className="m-0">Linked Deals</h4>
+                    <button className="btn-outline-small" onClick={() => { setNewDeal({...newDeal, customer_id: selectedProfileId}); setShowAddDeal(true); }}><Plus size={12}/></button>
+                  </div>
+                  <div className="linked-list">
+                    {profileData.deals.length > 0 ? profileData.deals.map(d => (
+                      <div key={d.id} className="linked-item">
+                        <div className="font-semibold">{d.title}</div>
+                        <div className="flex-between text-sm mt-1">
+                          <span className="text-green-400">${d.value.toLocaleString()}</span>
+                          <span className={`kanban-badge ${d.stage} scale-75 origin-right`}>{STAGE_LABELS[d.stage]}</span>
+                        </div>
+                      </div>
+                    )) : <div className="text-gray-500 text-sm">No deals.</div>}
+                  </div>
+                </div>
+
+                <div className="prof-card">
+                  <h4>Support Tickets</h4>
+                  <div className="linked-list">
+                    {profileData.tickets.length > 0 ? profileData.tickets.map(t => (
+                      <div key={t.id} className="linked-item">
+                        <div className="text-sm font-semibold truncate">#{t.id} - {t.issue}</div>
+                        <div className="flex-between text-xs mt-1 text-gray-400">
+                          <span className="uppercase">{t.status}</span>
+                          <span className={t.priority === 'urgent' ? 'text-red-400' : ''}>{t.priority}</span>
+                        </div>
+                      </div>
+                    )) : <div className="text-gray-500 text-sm">No tickets.</div>}
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
           </div>
         )}
 
@@ -328,58 +677,6 @@ export default function CrmView() {
           </div>
         )}
       </div>
-
-      {/* CUSTOMER PROFILE MODAL */}
-      {selectedCustomer && (
-        <div className="modal-overlay" onClick={() => setSelectedCustomer(null)}>
-          <div className="crm-modal profile-modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>{selectedCustomer.name}</h2>
-              <button className="btn-close" onClick={() => setSelectedCustomer(null)}>×</button>
-            </div>
-            <div className="modal-body profile-grid">
-              <div className="prof-left">
-                <div className="prof-card">
-                  <h4>Contact Info</h4>
-                  <p><strong>Email:</strong> {selectedCustomer.email}</p>
-                  <p><strong>Phone:</strong> {selectedCustomer.phone || "N/A"}</p>
-                  <p><strong>Company:</strong> {selectedCustomer.company || "N/A"}</p>
-                  <p><strong>Source:</strong> {selectedCustomer.source}</p>
-                </div>
-                <div className="prof-card">
-                  <div className="flex-between">
-                    <h4>AI Risk Score</h4>
-                    <button className="btn-outline-small" onClick={generateRiskScore}><Brain size={12}/> Analyze</button>
-                  </div>
-                  <div className="risk-display">
-                    <div className="risk-num" style={{color: selectedCustomer.risk_score < 0.3 ? '#E5484D' : '#30A46C'}}>
-                      {selectedCustomer.risk_score.toFixed(2)}
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="prof-right">
-                <div className="prof-card timeline-card">
-                  <h4>Activity Timeline</h4>
-                  <div className="timeline">
-                    {customerTimeline.map((t, i) => (
-                      <div key={i} className="timeline-item">
-                        <div className="t-dot"></div>
-                        <div className="t-content">
-                          <span className="t-time">{new Date(t.created_at).toLocaleString()}</span>
-                          <span className="t-type badge-small">{t.type}</span>
-                          <p>{t.description}</p>
-                          {t.sentiment_score !== null && <span className="t-sent">Sentiment: {t.sentiment_score}</span>}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ADD DEAL MODAL */}
       {showAddDeal && (

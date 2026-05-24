@@ -96,10 +96,16 @@ def init_db():
             revenue_generated REAL DEFAULT 0,
             created_at TEXT,
             last_contact TEXT,
-            notes TEXT
+            notes TEXT,
+            tags TEXT
         )
     ''')
 
+    try:
+        cursor.execute("ALTER TABLE customers ADD COLUMN tags TEXT")
+    except sqlite3.OperationalError:
+        pass # Column already exists
+    
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS deals (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -529,6 +535,80 @@ def get_customer(customer_id):
     row = cursor.fetchone()
     conn.close()
     return dict(row) if row else None
+
+def get_customer_full_profile(customer_id):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    
+    cursor.execute('SELECT * FROM customers WHERE id = ?', (customer_id,))
+    customer_row = cursor.fetchone()
+    if not customer_row:
+        conn.close()
+        return None
+        
+    customer = dict(customer_row)
+    
+    # Timeline
+    cursor.execute('SELECT * FROM activities WHERE customer_id = ? ORDER BY created_at DESC', (customer_id,))
+    timeline = [dict(r) for r in cursor.fetchall()]
+    
+    # Deals
+    cursor.execute('SELECT * FROM deals WHERE customer_id = ? ORDER BY created_at DESC', (customer_id,))
+    deals = [dict(r) for r in cursor.fetchall()]
+    
+    # Emails
+    if customer.get('email'):
+        cursor.execute('SELECT * FROM emails WHERE sender LIKE ? ORDER BY received_at DESC', (f"%{customer['email']}%",))
+        emails = [dict(r) for r in cursor.fetchall()]
+        
+        # Tickets
+        cursor.execute('SELECT * FROM tickets WHERE contact_info = ? ORDER BY timestamp DESC', (customer['email'],))
+        tickets = [dict(r) for r in cursor.fetchall()]
+    else:
+        emails = []
+        tickets = []
+        
+    conn.close()
+    
+    # Merge activities with emails and tickets for a master timeline
+    master_timeline = timeline.copy()
+    
+    for em in emails:
+        master_timeline.append({
+            "type": "email",
+            "description": f"Email: {em['subject']}",
+            "sentiment_score": em['sentiment_score'],
+            "created_at": em['received_at']
+        })
+        
+    for tk in tickets:
+        master_timeline.append({
+            "type": "ticket",
+            "description": f"Ticket #{tk['id']} - {tk['issue']}",
+            "sentiment_score": tk['sentiment'],
+            "created_at": tk['timestamp']
+        })
+        
+    # Sort descending
+    master_timeline.sort(key=lambda x: x['created_at'], reverse=True)
+    
+    # Sentiment trend: last 10 interactions with valid sentiment
+    sentiment_trend = [t for t in master_timeline if t.get('sentiment_score') is not None][:10]
+    sentiment_trend.reverse() # chronological order for charting
+    
+    # Interactions count
+    total_interactions = len(master_timeline)
+    
+    return {
+        "profile": customer,
+        "timeline": master_timeline,
+        "deals": deals,
+        "emails": emails,
+        "tickets": tickets,
+        "sentiment_trend": sentiment_trend,
+        "total_interactions": total_interactions
+    }
 
 def create_customer(name, email, phone, company, source, notes):
     from datetime import datetime

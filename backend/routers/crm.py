@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import Optional
 from database import (
     get_customers, get_customer, create_customer, update_customer, delete_customer,
-    log_activity, get_customer_timeline,
+    log_activity, get_customer_timeline, get_customer_full_profile,
     get_deals, create_deal, update_deal, delete_deal, get_crm_stats
 )
 from ai.crm_ai import calculate_risk_score, generate_forecast, generate_customer_summary
@@ -51,6 +51,12 @@ class AutoCreateRequest(BaseModel):
     description: str
     sentiment_score: Optional[float] = None
 
+class CustomerNotesRequest(BaseModel):
+    notes: str
+
+class CustomerTagsRequest(BaseModel):
+    tags: str
+
 # --- CUSTOMERS ---
 
 @router.get("/customers")
@@ -79,6 +85,12 @@ def remove_customer(cid: int):
     delete_customer(cid)
     return {"success": True}
 
+@router.get("/customers/{cid}/profile")
+def full_profile(cid: int):
+    p = get_customer_full_profile(cid)
+    if not p: raise HTTPException(404, "Not found")
+    return p
+
 @router.get("/customers/{cid}/timeline")
 def timeline(cid: int):
     return get_customer_timeline(cid)
@@ -96,11 +108,25 @@ def risk_score(cid: int):
         
     return result
 
+@router.post("/customers/{cid}/recalculate-risk")
+def recalculate_risk(cid: int):
+    return risk_score(cid)
+
 @router.post("/customers/{cid}/summary")
 def summary(cid: int):
     c = get_customer(cid)
     t = get_customer_timeline(cid)
-    return {"summary": generate_customer_summary(c, t)}
+    return generate_customer_summary(c, t)
+
+@router.post("/customers/{cid}/update-notes")
+def update_notes(cid: int, req: CustomerNotesRequest):
+    update_customer(cid, {"notes": req.notes})
+    return {"success": True}
+
+@router.post("/customers/{cid}/update-tags")
+def update_tags(cid: int, req: CustomerTagsRequest):
+    update_customer(cid, {"tags": req.tags})
+    return {"success": True}
 
 @router.post("/customers/auto-create")
 def auto_create(req: AutoCreateRequest):
