@@ -1,123 +1,122 @@
-# 🤖 SentimentAI — Real-time Emotion Intelligence Bot
+# SentimentAI — Real-time Emotion Intelligence System
 
 > **Zint AI Hackathon 2026** | Built by Daksh Pareek, Priyanshu Sharma, Sannidhi Paul
 
-A real-time AI-powered customer sentiment analysis platform that detects customer emotions, auto-routes conversations, generates intelligent replies, and alerts human agents — all in milliseconds.
+A real-time AI-powered customer sentiment analysis platform that detects customer emotions, auto-routes conversations, generates intelligent replies, and alerts human agents with millisecond latency.
 
 ---
 
-## 🚀 Live Demo Flow
+## Live Demo Flow
 
 ```
-Customer types message
-        ↓
-AI detects emotion (score 0.0 → 1.0)
-        ↓
-   Score < 0.3        Score 0.3–0.7       Score > 0.7
-      ↓                    ↓                   ↓
-🚨 ESCALATE            💬 NORMAL            🎁 UPSELL
-Human Agent Alert    Normal Bot Reply    Special Offer Sent
-        ↓                    ↓                   ↓
-   Saved to DB          Saved to DB         Saved to DB
+Customer Input
+        |
+AI Emotion Detection (Score 0.0 to 1.0)
+        |
+  Score < 0.3          Score 0.3-0.7         Score > 0.7
+      |                      |                     |
+  ESCALATE                NORMAL                UPSELL
+Human Agent Alert     Standard Bot Reply    Special Offer Sent
+      |                      |                     |
+ Saved to DB            Saved to DB           Saved to DB
 ```
 
 ---
 
-## ✨ Features
+## Features
 
 | Feature | Description |
 |---------|-------------|
-| 🧠 Real-time Sentiment Analysis | Detects emotion score 0.0–1.0 per message |
-| 🤖 AI Bot Reply | Context-aware reply in Hindi or English |
-| 🚨 Escalation Alert | Dramatic popup when customer is frustrated |
-| 🎁 Upsell Trigger | Auto-offer when customer is happy |
-| 📊 Live Emotion Graph | Real-time area chart with emotion history |
-| 💾 Conversation History | SQLite DB stores all conversations |
-| 🌐 Bilingual UI | Full Hindi + English support |
-| ⚡ WebSocket | True real-time, no page refresh needed |
+| Real-time Sentiment Analysis | Evaluates emotion score (0.0 - 1.0) for each message |
+| AI Bot Reply | Generates context-aware replies in English or Hindi |
+| Escalation Alert | Triggers automated alerts when customer frustration is detected |
+| Upsell Trigger | Issues promotional offers during positive interactions |
+| Live Emotion Graph | Displays real-time area chart of emotion history |
+| Conversation History | Maintains comprehensive conversation logs using SQLite |
+| Bilingual Interface | Full support for English and Hindi |
+| WebSocket Integration | Ensures real-time updates without page refreshes |
 
 ---
 
-## 🛠️ Tech Stack
+## Technical Stack
 
-| Layer | Technology |
-|-------|-----------|
+| Component | Technology |
+|-----------|------------|
 | AI Model | Groq API — LLaMA 3.3 70B |
-| Backend | Python FastAPI + WebSocket |
-| Frontend | React + Vite + Recharts |
+| Backend | Python FastAPI and WebSockets |
+| Frontend | React, Vite, and Recharts |
 | Database | SQLite |
-| Styling | Inline CSS (no framework) |
+| Styling | Custom CSS |
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 smartcare-ai/
 ├── backend/
-│   ├── main.py                  # FastAPI server + WebSocket
-│   ├── database.py              # SQLite init + save + fetch
+│   ├── main.py                  # FastAPI server and WebSocket implementation
+│   ├── database.py              # SQLite initialization and operations
 │   ├── ai/
-│   │   ├── sentiment_classifier.py  # Emotion score + action
-│   │   └── bot_reply.py             # AI reply generator
-│   ├── .env                     # API keys (not committed)
+│   │   ├── sentiment_classifier.py  # Emotion scoring and action routing
+│   │   └── bot_reply.py             # AI reply generation logic
+│   ├── .env                     # Environment variables and API keys
 │   └── requirements.txt
 ├── frontend/
 │   └── src/
-│       └── App.jsx              # Full React dashboard
-└── README.md
+│       └── App.jsx              # Main React dashboard component
+└── docs/
+    └── Readme.md                # Project documentation
 ```
 
 ---
 
-## ⚙️ Setup & Run
+## Setup & Execution Instructions
 
-### Backend
+### Backend Configuration
 ```bash
 cd backend
 pip install fastapi uvicorn groq python-dotenv
-# Add GROQ_API_KEY in .env file
+# Ensure GROQ_API_KEY is added to the .env file
 uvicorn main:app --reload
 ```
 
-### Frontend
+### Frontend Configuration
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-### Open
-```
-http://localhost:5173
-```
+### Access Application
+Navigate to `http://localhost:5173` in your web browser.
 
 ---
 
-## 🎯 Evaluation Criteria Match
+## Evaluation Criteria Alignment
 
-| Criteria | How We Address It |
-|----------|------------------|
-| Innovation & Creativity | Predictive emotion routing — not just a chatbot |
-| Real-World Problem Solving | SME businesses lose customers due to poor support |
-| Technical Architecture | WebSocket + FastAPI + React + SQLite + Groq AI |
-| Scalability | Multi-tenant ready, stateless API design |
-| Documentation & Presentation | Full README, architecture doc, live demo |
-
----
-
-## 📊 API Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/analyze` | Analyze a message (REST) |
-| GET | `/history` | Get all conversations from DB |
-| WS | `/ws` | Real-time WebSocket connection |
+| Criteria | Implementation Strategy |
+|----------|-------------------------|
+| Innovation & Creativity | Implements predictive emotion-based routing beyond standard chatbots |
+| Real-World Problem Solving | Mitigates customer churn in SMEs resulting from inadequate support |
+| Technical Architecture | Integrates WebSockets, FastAPI, React, SQLite, and Groq AI |
+| Scalability | Designed with a stateless API architecture suitable for multi-tenant deployments |
+| Documentation & Presentation | Includes comprehensive README, architecture documentation, and live demonstration |
 
 ---
 
-## 🏆Zint AI Hackathon 2026
+## API Reference
 
-Built for the FlowZint AI Hackathon 2026 — National Level Innovation Challenge.
+| HTTP Method | Endpoint | Description |
+|-------------|----------|-------------|
+| POST | `/analyze` | Analyze message sentiment and generate reply |
+| GET | `/history` | Retrieve complete conversation history from database |
+| WS | `/ws` | Establish real-time WebSocket connection |
 
-**Focus areas addressed:** Innovation · Scalability · AI Automation · Customer Engagement · Intelligent Workflows
+---
+
+## Zint AI Hackathon 2026
+
+Developed for the FlowZint AI Hackathon 2026 — National Level Innovation Challenge.
+
+**Core Focus Areas:** Innovation, Scalability, AI Automation, Customer Engagement, and Intelligent Workflows.
