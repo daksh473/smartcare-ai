@@ -6,7 +6,8 @@ from pydantic import BaseModel
 from groq import Groq
 from ai.sentiment_classifier import analyze_sentiment, decide_action
 from ai.bot_reply import generate_reply
-from database import save_conversation_message, save_voice_metadata
+from database import save_conversation_message, save_voice_metadata, create_voice_ticket
+from ai.memory_ai import extract_customer_identifier, build_memory_context, extract_and_store_memories
 from dotenv import load_dotenv
 import uuid
 
@@ -51,7 +52,8 @@ async def transcribe_audio(file: UploadFile = File(...)):
         return {
             "transcript": transcription.text,
             "language": getattr(transcription, "language", "en"),
-            "confidence": round(getattr(transcription, "duration", 1.0) and 0.92, 2)  # Whisper doesn't return confidence directly
+            "confidence": round(getattr(transcription, "duration", 1.0) and 0.92, 2),
+            "audio_duration": float(getattr(transcription, "duration", 0) or 0)
         }
     except Exception as e:
         print(f"Transcription error: {e}")
@@ -71,7 +73,7 @@ def speak_text(req: SpeakRequest):
     }
 
 @router.post("/process")
-async def full_voice_pipeline(file: UploadFile = File(...)):
+async def full_voice_pipeline(file: UploadFile = File(...), session_id: str = None):
     """Full pipeline: audio → transcribe → sentiment → bot reply"""
     try:
         # Step 1: Transcribe
@@ -100,7 +102,8 @@ async def full_voice_pipeline(file: UploadFile = File(...)):
 
         transcript = transcription.text
         language = getattr(transcription, "language", "en")
-        confidence = getattr(transcription, "duration", 1.0) and 0.92  # Mock confidence for now
+        audio_duration = float(getattr(transcription, "duration", 0) or 0)
+        confidence = 0.92
 
         if not transcript or not transcript.strip():
             return {
@@ -115,14 +118,24 @@ async def full_voice_pipeline(file: UploadFile = File(...)):
         result = analyze_sentiment(transcript)
         action = decide_action(result["score"])
 
-        # Step 3: Bot Reply
-        reply = generate_reply(transcript, action)
+        sid = session_id or f"voice-{uuid.uuid4().hex[:8]}"
+        customer_id = extract_customer_identifier(transcript, sid)
+        memory_context, memory_count = build_memory_context(customer_id)
+        reply = generate_reply(transcript, action, memory_context=memory_context)
 
-        # Step 4: Save conversation and voice metadata
-        session_id = f"voice-{uuid.uuid4().hex[:8]}"
-        save_conversation_message(session_id, "user", transcript, result["score"], result["emotion"], action)
-        save_conversation_message(session_id, "assistant", reply, result["score"], result["emotion"], action)
-        save_voice_metadata(session_id, language, confidence)
+        save_conversation_message(sid, "user", transcript, result["score"], result["emotion"], action)
+        save_conversation_message(sid, "assistant", reply, result["score"], result["emotion"], action)
+        save_voice_metadata(sid, language, confidence)
+
+        ticket_id = None
+        if action == "ESCALATE":
+            ticket = create_voice_ticket(
+                f"Voice {customer_id[:12]}", transcript,
+                result["score"], result["emotion"], audio_duration
+            )
+            ticket_id = ticket["id"] if ticket else None
+
+        extract_and_store_memories(sid, customer_id, transcript, reply, result["score"])
 
         return {
             "transcript": transcript,
@@ -132,7 +145,11 @@ async def full_voice_pipeline(file: UploadFile = File(...)):
                 "action": action
             },
             "bot_reply": reply,
-            "language": language
+            "language": language,
+            "audio_duration": audio_duration,
+            "ticket_id": ticket_id,
+            "memory_used": memory_count,
+            "customer_identifier": customer_id
         }
     except Exception as e:
         print(f"Voice pipeline error: {e}")

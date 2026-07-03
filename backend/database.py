@@ -8,15 +8,6 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    cursor.execute('DROP TABLE IF EXISTS tickets')
-    cursor.execute('DROP TABLE IF EXISTS conversations')
-    cursor.execute('DROP TABLE IF EXISTS knowledge_base')
-    cursor.execute('DROP TABLE IF EXISTS voice_metadata')
-    cursor.execute('DROP TABLE IF EXISTS emails')
-    cursor.execute('DROP TABLE IF EXISTS customers')
-    cursor.execute('DROP TABLE IF EXISTS deals')
-    cursor.execute('DROP TABLE IF EXISTS activities')
-    
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS tickets (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -48,9 +39,15 @@ def init_db():
             question TEXT NOT NULL,
             answer TEXT NOT NULL,
             category TEXT NOT NULL,
-            usage_count INTEGER DEFAULT 0
+            usage_count INTEGER DEFAULT 0,
+            language TEXT DEFAULT 'en'
         )
     ''')
+
+    try:
+        cursor.execute("ALTER TABLE knowledge_base ADD COLUMN language TEXT DEFAULT 'en'")
+    except sqlite3.OperationalError:
+        pass
 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS voice_metadata (
@@ -104,7 +101,22 @@ def init_db():
     try:
         cursor.execute("ALTER TABLE customers ADD COLUMN tags TEXT")
     except sqlite3.OperationalError:
-        pass # Column already exists
+        pass
+
+    try:
+        cursor.execute("ALTER TABLE customers ADD COLUMN session_id TEXT")
+    except sqlite3.OperationalError:
+        pass
+        
+    try:
+        cursor.execute("ALTER TABLE conversations ADD COLUMN language TEXT DEFAULT 'en'")
+    except sqlite3.OperationalError:
+        pass
+        
+    try:
+        cursor.execute("ALTER TABLE tickets ADD COLUMN language TEXT DEFAULT 'en'")
+    except sqlite3.OperationalError:
+        pass
     
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS deals (
@@ -134,7 +146,90 @@ def init_db():
             FOREIGN KEY (customer_id) REFERENCES customers(id)
         )
     ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS agents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            email TEXT UNIQUE,
+            status TEXT DEFAULT 'online',
+            current_conversations INTEGER DEFAULT 0,
+            max_conversations INTEGER DEFAULT 3,
+            specialization TEXT DEFAULT 'general',
+            avg_rating REAL DEFAULT 5.0,
+            total_handled INTEGER DEFAULT 0,
+            created_at TEXT
+        )
+    ''')
     
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS handoffs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT,
+            customer_id INTEGER,
+            agent_id INTEGER,
+            reason TEXT,
+            sentiment_score REAL,
+            emotion TEXT,
+            status TEXT DEFAULT 'pending',
+            priority TEXT DEFAULT 'medium',
+            conversation_history TEXT,
+            agent_notes TEXT,
+            created_at TEXT,
+            accepted_at TEXT,
+            resolved_at TEXT,
+            customer_rating INTEGER,
+            FOREIGN KEY (agent_id) REFERENCES agents(id)
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS memory_store (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT,
+            customer_identifier TEXT,
+            memory_type TEXT,
+            key TEXT,
+            value TEXT,
+            importance REAL DEFAULT 0.5,
+            created_at TEXT,
+            last_accessed TEXT,
+            access_count INTEGER DEFAULT 0
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS conversation_summaries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            customer_identifier TEXT UNIQUE,
+            summary TEXT,
+            total_conversations INTEGER,
+            common_issues TEXT,
+            personality_traits TEXT,
+            preferred_language TEXT,
+            sentiment_trend TEXT,
+            last_updated TEXT
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS predictions_cache (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cache_key TEXT UNIQUE NOT NULL,
+            data TEXT NOT NULL,
+            calculated_at TEXT NOT NULL
+        )
+    ''')
+    
+    # Seed Agents
+    cursor.execute('SELECT COUNT(*) FROM agents')
+    if cursor.fetchone()[0] == 0:
+        agents_data = [
+            ("Rahul Sharma", "rahul@smartcare.ai", "online", "billing", datetime.now().isoformat()),
+            ("Priya Singh", "priya@smartcare.ai", "online", "technical", datetime.now().isoformat()),
+            ("Amit Kumar", "amit@smartcare.ai", "busy", "general", datetime.now().isoformat())
+        ]
+        cursor.executemany('INSERT INTO agents (name, email, status, specialization, created_at) VALUES (?, ?, ?, ?, ?)', agents_data)
+
     # Seed Knowledge Base
     cursor.execute('SELECT COUNT(*) FROM knowledge_base')
     if cursor.fetchone()[0] == 0:
@@ -158,7 +253,7 @@ def init_db():
 # -----------------
 # TICKETS FUNCTIONS
 # -----------------
-def create_ticket(customer_name: str, issue: str, score: float):
+def create_ticket(customer_name: str, issue: str, score: float, language: str = "en"):
     priority = "LOW"
     if score < 0.3:
         priority = "HIGH"
@@ -168,9 +263,9 @@ def create_ticket(customer_name: str, issue: str, score: float):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('''
-        INSERT INTO tickets (customer_name, issue, status, priority, created_at)
-        VALUES (?, ?, ?, ?, ?)
-    ''', (customer_name, issue, "OPEN", priority, datetime.now().isoformat()))
+        INSERT INTO tickets (customer_name, issue, status, priority, created_at, language)
+        VALUES (?, ?, ?, ?, ?, ?)
+    ''', (customer_name, issue, "OPEN", priority, datetime.now().isoformat(), language))
     ticket_id = cursor.lastrowid
     conn.commit()
     conn.close()
@@ -226,13 +321,13 @@ def get_tickets_stats():
 # -----------------------
 # CONVERSATION FUNCTIONS
 # -----------------------
-def save_conversation_message(session_id: str, role: str, message: str, sentiment_score: float, emotion: str, action: str):
+def save_conversation_message(session_id: str, role: str, message: str, sentiment_score: float, emotion: str, action: str, language: str = "en"):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('''
-        INSERT INTO conversations (session_id, role, message, sentiment_score, emotion, action, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    ''', (session_id, role, message, sentiment_score, emotion, action, datetime.now().isoformat()))
+        INSERT INTO conversations (session_id, role, message, sentiment_score, emotion, action, timestamp, language)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (session_id, role, message, sentiment_score, emotion, action, datetime.now().isoformat(), language))
     conn.commit()
     conn.close()
 
@@ -558,16 +653,16 @@ def get_customer_full_profile(customer_id):
     deals = [dict(r) for r in cursor.fetchall()]
     
     # Emails
+    emails = []
+    tickets = []
+    
     if customer.get('email'):
         cursor.execute('SELECT * FROM emails WHERE sender LIKE ? ORDER BY received_at DESC', (f"%{customer['email']}%",))
         emails = [dict(r) for r in cursor.fetchall()]
         
-        # Tickets
-        cursor.execute('SELECT * FROM tickets WHERE contact_info = ? ORDER BY timestamp DESC', (customer['email'],))
+    if customer.get('name'):
+        cursor.execute('SELECT * FROM tickets WHERE customer_name = ? ORDER BY created_at DESC', (customer['name'],))
         tickets = [dict(r) for r in cursor.fetchall()]
-    else:
-        emails = []
-        tickets = []
         
     conn.close()
     
@@ -586,8 +681,8 @@ def get_customer_full_profile(customer_id):
         master_timeline.append({
             "type": "ticket",
             "description": f"Ticket #{tk['id']} - {tk['issue']}",
-            "sentiment_score": tk['sentiment'],
-            "created_at": tk['timestamp']
+            "sentiment_score": None, # or sentiment logic
+            "created_at": tk['created_at']
         })
         
     # Sort descending
@@ -600,32 +695,143 @@ def get_customer_full_profile(customer_id):
     # Interactions count
     total_interactions = len(master_timeline)
     
-    return {
-        "profile": customer,
-        "timeline": master_timeline,
-        "deals": deals,
-        "emails": emails,
-        "tickets": tickets,
-        "sentiment_trend": sentiment_trend,
-        "total_interactions": total_interactions
-    }
+    # User requested flat structure with defaults
+    response = dict(customer)
+    response["id"] = customer.get("id", customer_id)
+    response["name"] = customer.get("name", "Unknown")
+    response["email"] = customer.get("email", "")
+    response["status"] = customer.get("status") or "lead"
+    response["risk_score"] = customer.get("risk_score") if customer.get("risk_score") is not None else 0.5
+    response["avg_sentiment"] = customer.get("avg_sentiment") if customer.get("avg_sentiment") is not None else 0.5
+    response["total_conversations"] = total_interactions
+    response["total_tickets"] = len(tickets)
+    response["activities"] = master_timeline
+    response["deals"] = deals
+    response["sentiment_trend"] = sentiment_trend
+    response["notes"] = customer.get("notes") or ""
+    
+    # Original nested structure for the 3-column UI
+    response["profile"] = customer
+    response["timeline"] = master_timeline
+    response["emails"] = emails
+    response["tickets"] = tickets
+    response["total_interactions"] = total_interactions
+    
+    return response
 
-def create_customer(name, email, phone, company, source, notes):
+def create_customer(name, email, phone, company, source, notes, session_id=None):
     from datetime import datetime
+    now = datetime.now().isoformat()
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     try:
         cursor.execute('''
-            INSERT INTO customers (name, email, phone, company, source, created_at, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (name, email, phone, company, source, datetime.now().isoformat(), notes))
+            INSERT INTO customers (name, email, phone, company, source, status, created_at, last_contact, notes, session_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (name, email, phone, company, source, "lead", now, now, notes, session_id))
         conn.commit()
         customer_id = cursor.lastrowid
     except sqlite3.IntegrityError:
-        cursor.execute('SELECT id FROM customers WHERE email = ?', (email,))
-        customer_id = cursor.fetchone()[0]
+        if email:
+            cursor.execute('SELECT id FROM customers WHERE email = ?', (email,))
+            row = cursor.fetchone()
+            customer_id = row[0] if row else None
+        else:
+            customer_id = None
+        conn.commit()
     conn.close()
     return customer_id
+
+def find_customer_for_chat(session_id=None, email=None, name=None):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    if session_id:
+        cursor.execute('SELECT * FROM customers WHERE session_id = ?', (session_id,))
+        row = cursor.fetchone()
+        if row:
+            conn.close()
+            return dict(row)
+
+    if email:
+        cursor.execute('SELECT * FROM customers WHERE LOWER(email) = LOWER(?)', (email,))
+        row = cursor.fetchone()
+        if row:
+            conn.close()
+            return dict(row)
+
+    if name and name.lower() not in ("chat user", "unknown"):
+        cursor.execute('SELECT * FROM customers WHERE LOWER(name) = LOWER(?)', (name,))
+        row = cursor.fetchone()
+        if row:
+            conn.close()
+            return dict(row)
+
+    conn.close()
+    return None
+
+def upsert_customer_from_chat(session_id: str, extracted: dict, sentiment_score: float = None, message_snippet: str = ""):
+    """Create or update a CRM customer from dashboard chat."""
+    from datetime import datetime
+    now = datetime.now().isoformat()
+
+    name = extracted.get("name") or None
+    email = extracted.get("email") or None
+    phone = extracted.get("phone") or None
+    company = extracted.get("company") or None
+
+    existing = find_customer_for_chat(
+        session_id=session_id,
+        email=email,
+        name=name
+    )
+
+    if existing:
+        updates = {
+            "last_contact": now,
+            "total_conversations": (existing.get("total_conversations") or 0) + 1,
+        }
+        if name and name.lower() != "chat user":
+            updates["name"] = name
+        if email:
+            updates["email"] = email
+        if phone:
+            updates["phone"] = phone
+        if company:
+            updates["company"] = company
+        if session_id and not existing.get("session_id"):
+            updates["session_id"] = session_id
+
+        if sentiment_score is not None:
+            prev_avg = existing.get("avg_sentiment") or 0.5
+            total = existing.get("total_conversations") or 0
+            new_avg = ((prev_avg * total) + sentiment_score) / (total + 1)
+            updates["avg_sentiment"] = round(new_avg, 3)
+
+        update_customer(existing["id"], updates)
+        desc = message_snippet[:120] if message_snippet else "Dashboard chat message"
+        log_activity(existing["id"], "chat", desc, sentiment_score)
+        return {"customer_id": existing["id"], "created": False, "name": updates.get("name", existing["name"])}
+
+    display_name = name or "Chat User"
+    cid = create_customer(
+        name=display_name,
+        email=email,
+        phone=phone,
+        company=company,
+        source="chat",
+        notes=f"Auto-created from dashboard chat session {session_id[:8]}",
+        session_id=session_id
+    )
+    if cid and sentiment_score is not None:
+        update_customer(cid, {"avg_sentiment": sentiment_score})
+
+    if cid:
+        log_activity(cid, "chat", message_snippet[:120] if message_snippet else "Started dashboard chat", sentiment_score)
+        log_activity(cid, "note", "Customer profile auto-created from chat")
+
+    return {"customer_id": cid, "created": True, "name": display_name}
 
 def update_customer(customer_id, data):
     conn = sqlite3.connect(DB_PATH)
@@ -778,3 +984,447 @@ def get_crm_stats():
         "conversion_rate": round(conversion_rate, 1),
         "at_risk_customers": at_risk_customers
     }
+
+# -----------------
+# AGENT & HANDOFF FUNCTIONS
+# -----------------
+def get_agents():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM agents')
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def get_agent(agent_id):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM agents WHERE id = ?', (agent_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def create_agent(name, email, specialization="general", max_conversations=3):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    try:
+        from datetime import datetime
+        cursor.execute('''
+            INSERT INTO agents (name, email, specialization, max_conversations, created_at)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (name, email, specialization, max_conversations, datetime.now().isoformat()))
+        conn.commit()
+        aid = cursor.lastrowid
+    except sqlite3.IntegrityError:
+        cursor.execute('SELECT id FROM agents WHERE email = ?', (email,))
+        aid = cursor.fetchone()[0]
+    conn.close()
+    return aid
+
+def update_agent_status(agent_id, status):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('UPDATE agents SET status = ? WHERE id = ?', (status, agent_id))
+    conn.commit()
+    conn.close()
+    return get_agent(agent_id)
+
+def create_handoff(session_id, customer_id, agent_id, reason, sentiment_score, emotion, priority, conversation_history):
+    from datetime import datetime
+    import json
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT INTO handoffs (session_id, customer_id, agent_id, reason, sentiment_score, emotion, priority, conversation_history, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (session_id, customer_id, agent_id, reason, sentiment_score, emotion, priority, json.dumps(conversation_history), datetime.now().isoformat()))
+    conn.commit()
+    hid = cursor.lastrowid
+    conn.close()
+    return hid
+
+def get_handoffs(status=None, agent_id=None):
+    import json
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    query = 'SELECT h.*, c.name as customer_name, a.name as agent_name FROM handoffs h LEFT JOIN customers c ON h.customer_id = c.id LEFT JOIN agents a ON h.agent_id = a.id WHERE 1=1'
+    params = []
+    if status:
+        query += ' AND h.status = ?'
+        params.append(status)
+    if agent_id:
+        query += ' AND h.agent_id = ?'
+        params.append(agent_id)
+    query += ' ORDER BY h.created_at DESC'
+    cursor.execute(query, tuple(params))
+    rows = cursor.fetchall()
+    conn.close()
+    result = []
+    for r in rows:
+        d = dict(r)
+        d['conversation_history'] = json.loads(d['conversation_history']) if d['conversation_history'] else []
+        result.append(d)
+    return result
+
+def accept_handoff(handoff_id):
+    from datetime import datetime
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('UPDATE handoffs SET status = "active", accepted_at = ? WHERE id = ?', (datetime.now().isoformat(), handoff_id))
+    cursor.execute('SELECT agent_id FROM handoffs WHERE id = ?', (handoff_id,))
+    agent_id = cursor.fetchone()[0]
+    if agent_id:
+        cursor.execute('UPDATE agents SET current_conversations = current_conversations + 1 WHERE id = ?', (agent_id,))
+    conn.commit()
+    conn.close()
+
+def resolve_handoff(handoff_id, resolution_notes, customer_rating):
+    from datetime import datetime
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+        UPDATE handoffs SET status = "resolved", resolved_at = ?, agent_notes = ?, customer_rating = ? WHERE id = ?
+    ''', (datetime.now().isoformat(), resolution_notes, customer_rating, handoff_id))
+    cursor.execute('SELECT agent_id FROM handoffs WHERE id = ?', (handoff_id,))
+    agent_id = cursor.fetchone()[0]
+    if agent_id:
+        cursor.execute('UPDATE agents SET current_conversations = MAX(0, current_conversations - 1), total_handled = total_handled + 1 WHERE id = ?', (agent_id,))
+        # Update agent rating
+        cursor.execute('SELECT avg_rating, total_handled FROM agents WHERE id = ?', (agent_id,))
+        row = cursor.fetchone()
+        if row and customer_rating:
+            curr_rating = row[0]
+            total = row[1]
+            new_avg = ((curr_rating * (total - 1)) + customer_rating) / total
+            cursor.execute('UPDATE agents SET avg_rating = ? WHERE id = ?', (new_avg, agent_id))
+    conn.commit()
+    conn.close()
+
+def transfer_handoff(handoff_id, new_agent_id, reason):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    # Decrement old agent
+    cursor.execute('SELECT agent_id FROM handoffs WHERE id = ?', (handoff_id,))
+    old_agent_id = cursor.fetchone()[0]
+    if old_agent_id:
+        cursor.execute('UPDATE agents SET current_conversations = MAX(0, current_conversations - 1) WHERE id = ?', (old_agent_id,))
+    # Update handoff
+    cursor.execute('''
+        UPDATE handoffs SET agent_id = ?, reason = reason || ' | Transfer: ' || ?, status = "pending" WHERE id = ?
+    ''', (new_agent_id, reason, handoff_id))
+    conn.commit()
+    conn.close()
+
+# -----------------
+# MEMORY FUNCTIONS
+# -----------------
+def store_memory(session_id: str, customer_identifier: str, memory_type: str, key: str, value: str, importance: float = 0.5):
+    now = datetime.now().isoformat()
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT id FROM memory_store
+        WHERE customer_identifier = ? AND memory_type = ? AND key = ?
+    ''', (customer_identifier, memory_type, key))
+    existing = cursor.fetchone()
+    if existing:
+        cursor.execute('''
+            UPDATE memory_store SET value = ?, importance = ?, last_accessed = ?, access_count = access_count + 1
+            WHERE id = ?
+        ''', (value, importance, now, existing[0]))
+        mem_id = existing[0]
+    else:
+        cursor.execute('''
+            INSERT INTO memory_store (session_id, customer_identifier, memory_type, key, value, importance, created_at, last_accessed, access_count)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+        ''', (session_id, customer_identifier, memory_type, key, value, importance, now, now))
+        mem_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return get_memory_by_id(mem_id)
+
+def get_memory_by_id(mem_id: int):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM memory_store WHERE id = ?', (mem_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def get_memories_for_customer(customer_identifier: str, limit: int = 50):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    now = datetime.now().isoformat()
+    cursor.execute('''
+        UPDATE memory_store SET last_accessed = ?, access_count = access_count + 1
+        WHERE customer_identifier = ?
+    ''', (now, customer_identifier))
+    cursor.execute('''
+        SELECT * FROM memory_store WHERE customer_identifier = ?
+        ORDER BY importance DESC, last_accessed DESC LIMIT ?
+    ''', (customer_identifier, limit))
+    rows = cursor.fetchall()
+    conn.commit()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def get_memory_count(customer_identifier: str):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('SELECT COUNT(*) FROM memory_store WHERE customer_identifier = ?', (customer_identifier,))
+    count = cursor.fetchone()[0]
+    conn.close()
+    return count
+
+def save_conversation_summary(customer_identifier: str, summary: str, total_conversations: int,
+                               common_issues: list, personality_traits: dict, preferred_language: str,
+                               sentiment_trend: str):
+    now = datetime.now().isoformat()
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT INTO conversation_summaries
+        (customer_identifier, summary, total_conversations, common_issues, personality_traits, preferred_language, sentiment_trend, last_updated)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(customer_identifier) DO UPDATE SET
+            summary = excluded.summary,
+            total_conversations = excluded.total_conversations,
+            common_issues = excluded.common_issues,
+            personality_traits = excluded.personality_traits,
+            preferred_language = excluded.preferred_language,
+            sentiment_trend = excluded.sentiment_trend,
+            last_updated = excluded.last_updated
+    ''', (customer_identifier, summary, total_conversations, json.dumps(common_issues),
+          json.dumps(personality_traits), preferred_language, sentiment_trend, now))
+    conn.commit()
+    conn.close()
+    return get_conversation_summary(customer_identifier)
+
+def get_conversation_summary(customer_identifier: str):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM conversation_summaries WHERE customer_identifier = ?', (customer_identifier,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    d = dict(row)
+    d['common_issues'] = json.loads(d['common_issues']) if d['common_issues'] else []
+    d['personality_traits'] = json.loads(d['personality_traits']) if d['personality_traits'] else {}
+    return d
+
+def get_open_ticket_count_for_customer(customer_name: str):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('SELECT COUNT(*) FROM tickets WHERE customer_name LIKE ? AND status = "OPEN"', (f'%{customer_name}%',))
+    count = cursor.fetchone()[0]
+    conn.close()
+    return count
+
+def create_voice_ticket(customer_name: str, transcript: str, score: float, emotion: str, audio_duration: float, language: str = "en"):
+    issue = (
+        f"[Voice Message] Transcript: {transcript} | "
+        f"Sentiment: {score:.2f} | Emotion: {emotion} | "
+        f"Duration: {audio_duration:.1f}s"
+    )
+    return create_ticket(customer_name, issue, score, language)
+
+def backfill_memories_from_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute('SELECT COUNT(*) FROM memory_store')
+    if cursor.fetchone()[0] > 0:
+        conn.close()
+        return {"backfilled": 0, "reason": "memory already populated"}
+
+    count = 0
+    now = datetime.now().isoformat()
+
+    cursor.execute('SELECT * FROM tickets ORDER BY created_at ASC')
+    for t in cursor.fetchall():
+        cid = t['customer_name']
+        cursor.execute('''
+            INSERT INTO memory_store (session_id, customer_identifier, memory_type, key, value, importance, created_at, last_accessed, access_count)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+        ''', (None, cid, 'complaint', f"ticket_{t['id']}", t['issue'], 0.8 if t['priority'] == 'HIGH' else 0.6, t['created_at'], now))
+        count += 1
+
+    cursor.execute('SELECT * FROM emails ORDER BY received_at ASC')
+    for e in cursor.fetchall():
+        cid = e['sender'] or 'unknown_email'
+        cursor.execute('''
+            INSERT INTO memory_store (session_id, customer_identifier, memory_type, key, value, importance, created_at, last_accessed, access_count)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+        ''', (None, cid, 'context', f"email_{e['id']}", f"{e['subject']}: {(e['body'] or '')[:200]}", 0.5, e['received_at'] or now, now))
+        count += 1
+
+    conn.close()
+
+    conn2 = sqlite3.connect(DB_PATH)
+    cursor2 = conn2.cursor()
+    cursor2.execute('SELECT DISTINCT session_id FROM conversations')
+    sessions = [r[0] for r in cursor2.fetchall()]
+    conn2.close()
+
+    for sid in sessions:
+        history = get_conversation_history(sid)
+        for msg in history:
+            if msg['role'] == 'user' and len(msg['message']) > 10:
+                store_memory(sid, sid, 'context', f"msg_{msg['id']}", msg['message'][:300], 0.4)
+                count += 1
+
+    return {"backfilled": count}
+
+# -----------------
+# PREDICTIONS CACHE & DATA
+# -----------------
+CACHE_TTL_SECONDS = 3600
+
+def get_predictions_cache(cache_key: str):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM predictions_cache WHERE cache_key = ?', (cache_key,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    from datetime import datetime
+    calculated = datetime.fromisoformat(row['calculated_at'])
+    age = (datetime.now() - calculated).total_seconds()
+    return {
+        "data": json.loads(row['data']),
+        "calculated_at": row['calculated_at'],
+        "age_seconds": age,
+        "expired": age >= CACHE_TTL_SECONDS
+    }
+
+def set_predictions_cache(cache_key: str, data: dict):
+    from datetime import datetime
+    now = datetime.now().isoformat()
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT INTO predictions_cache (cache_key, data, calculated_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(cache_key) DO UPDATE SET data = excluded.data, calculated_at = excluded.calculated_at
+    ''', (cache_key, json.dumps(data), now))
+    conn.commit()
+    conn.close()
+
+def get_conversations_since(days: int = 30):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT session_id, message, sentiment_score, emotion, action, timestamp
+        FROM conversations WHERE role = 'user'
+        AND timestamp >= datetime('now', ?)
+        ORDER BY timestamp ASC
+    ''', (f'-{days} days',))
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
+
+def get_tickets_since(days: int = 90):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT * FROM tickets WHERE created_at >= datetime('now', ?)
+        ORDER BY created_at ASC
+    ''', (f'-{days} days',))
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
+
+def get_open_tickets_for_customer(customer_name: str):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT COUNT(*) FROM tickets
+        WHERE status = 'OPEN' AND customer_name LIKE ?
+    ''', (f'%{customer_name}%',))
+    count = cursor.fetchone()[0]
+    conn.close()
+    return count
+
+def get_ticket_weekday_distribution(days: int = 90):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT CAST(strftime('%w', created_at) AS INTEGER) as dow, COUNT(*) as cnt
+        FROM tickets WHERE created_at >= datetime('now', ?)
+        GROUP BY dow
+    ''', (f'-{days} days',))
+    rows = cursor.fetchall()
+    conn.close()
+    dist = {i: 0 for i in range(7)}
+    for dow, cnt in rows:
+        dist[dow] = cnt
+    return dist
+
+def get_daily_ticket_counts(days: int = 30):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT DATE(created_at) as dt, COUNT(*) as cnt
+        FROM tickets WHERE created_at >= datetime('now', ?)
+        GROUP BY dt ORDER BY dt
+    ''', (f'-{days} days',))
+    rows = cursor.fetchall()
+    conn.close()
+    return [{"date": r[0], "count": r[1]} for r in rows]
+
+def get_daily_sentiment(days: int = 30):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT DATE(timestamp) as dt, AVG(sentiment_score) as avg_score, COUNT(*) as cnt
+        FROM conversations WHERE role = 'user'
+        AND timestamp >= datetime('now', ?)
+        GROUP BY dt ORDER BY dt
+    ''', (f'-{days} days',))
+    rows = cursor.fetchall()
+    conn.close()
+    return [{"date": r[0], "avg_score": round(r[1], 3) if r[1] else 0.5, "count": r[2]} for r in rows]
+
+def get_customer_activity_hours(customer_id: int):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT CAST(strftime('%w', created_at) AS INTEGER) as dow,
+               CAST(strftime('%H', created_at) AS INTEGER) as hour,
+               COUNT(*) as cnt
+        FROM activities WHERE customer_id = ?
+        GROUP BY dow, hour ORDER BY cnt DESC
+    ''', (customer_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [{"dow": r[0], "hour": r[1], "count": r[2]} for r in rows]
+
+def match_customer_conversations(customer, conversations):
+    """Match conversations to a customer by session_id, name, or email."""
+    sid = customer.get('session_id') or ''
+    name = (customer.get('name') or '').lower()
+    email = (customer.get('email') or '').lower()
+    matched = []
+    for c in conversations:
+        session = c.get('session_id', '')
+        msg = (c.get('message') or '').lower()
+        if sid and session == sid:
+            matched.append(c)
+        elif name and name not in ('chat user', 'unknown') and name in msg:
+            matched.append(c)
+        elif email and email in msg:
+            matched.append(c)
+        elif name and name not in ('chat user', 'unknown') and name in (c.get('customer_name') or '').lower():
+            matched.append(c)
+    return matched

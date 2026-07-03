@@ -55,6 +55,17 @@ export default function EmailView() {
   }, []);
 
   useEffect(() => {
+    const draft = sessionStorage.getItem("emailComposeDraft");
+    if (draft) {
+      try {
+        setComposeData(JSON.parse(draft));
+        setComposeOpen(true);
+      } catch (e) { /* ignore */ }
+      sessionStorage.removeItem("emailComposeDraft");
+    }
+  }, []);
+
+  useEffect(() => {
     if (selectedEmail) {
       setCustomReply(selectedEmail.reply_sent || "");
     }

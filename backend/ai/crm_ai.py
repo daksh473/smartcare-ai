@@ -137,3 +137,45 @@ def generate_customer_summary(customer_data, timeline):
             "risk_level": "Unknown",
             "recommended_action": "Check system logs."
         }
+
+def auto_route_agent(issue_text):
+    """
+    Decides the best agent specialization (billing, technical, sales, general) for a given issue.
+    """
+    prompt = f"""
+    Based on the following customer issue, determine the most appropriate agent specialization to handle it.
+    The available specializations are: "billing", "technical", "sales", "general".
+    
+    Customer Issue:
+    "{issue_text}"
+    
+    Provide your response in JSON format with two keys:
+    1. "specialization": One of ["billing", "technical", "sales", "general"].
+    2. "reason": A brief 1-sentence reason why this specialization was chosen.
+    
+    Respond ONLY with valid JSON.
+    """
+    
+    try:
+        response = groq_client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {"role": "system", "content": "You are a customer service routing AI. Output ONLY valid JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.1
+        )
+        content = response.choices[0].message.content.strip()
+        if content.startswith("```json"):
+            content = content[7:-3].strip()
+        elif content.startswith("```"):
+            content = content[3:-3].strip()
+            
+        data = json.loads(content)
+        return data
+    except Exception as e:
+        print(f"Auto-Route AI Error: {e}")
+        return {
+            "specialization": "general",
+            "reason": "Failed to determine specialization, routing to general."
+        }

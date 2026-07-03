@@ -6,6 +6,7 @@ export default function KnowledgeBaseView() {
   const [query, setQuery] = useState("");
   const [searchResult, setSearchResult] = useState(null);
   const [searching, setSearching] = useState(false);
+  const [filterLang, setFilterLang] = useState("all");
 
   // Form state
   const [newQ, setNewQ] = useState("");
@@ -163,13 +164,33 @@ export default function KnowledgeBaseView() {
 
       {/* KB List */}
       <div>
-        <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4 border-b border-gray-800 pb-2">All FAQ Entries</h3>
+        <div className="flex justify-between items-center mb-4 border-b border-gray-800 pb-2">
+          <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider">All FAQ Entries</h3>
+          <select 
+            value={filterLang} 
+            onChange={e => setFilterLang(e.target.value)}
+            className="p-1 px-2 bg-[#232323] border border-gray-700 rounded text-xs text-white outline-none"
+          >
+            <option value="all">All Languages</option>
+            <option value="en">English</option>
+            <option value="hi">Hindi</option>
+            <option value="hin">Hinglish</option>
+            <option value="bn">Bengali</option>
+            <option value="ta">Tamil</option>
+            <option value="te">Telugu</option>
+          </select>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {faqs.map(faq => (
+          {faqs.filter(f => filterLang === "all" || f.language === filterLang).map(faq => (
             <div key={faq.id} className="bg-[#232323] border border-gray-800 rounded-xl p-4 flex flex-col hover:border-gray-600 transition-colors relative overflow-hidden group">
               <div className="text-[10px] uppercase font-bold text-gray-500 mb-2 flex justify-between">
                 <span>{faq.category}</span>
-                <span className="text-blue-400 bg-blue-400/10 px-1.5 py-0.5 rounded">ID: {faq.id}</span>
+                <span className="flex gap-2">
+                  {faq.language && faq.language !== "en" && (
+                    <span className="text-orange-400 bg-orange-400/10 px-1.5 py-0.5 rounded">🇮🇳 {faq.language.toUpperCase()}</span>
+                  )}
+                  <span className="text-blue-400 bg-blue-400/10 px-1.5 py-0.5 rounded">ID: {faq.id}</span>
+                </span>
               </div>
               <h4 className="font-semibold text-sm mb-2 text-gray-200">{faq.question}</h4>
               <p className="text-xs text-gray-400 flex-1">{faq.answer}</p>

@@ -1,17 +1,61 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Plus, ArrowUp, MessageSquare, BarChart3, Settings,
-  CircleDot, AlertTriangle, X, Clock, Wifi, Inbox, LayoutDashboard, Database, Mic, Mail, Users
+  CircleDot, AlertTriangle, X, Clock, Wifi, Inbox, LayoutDashboard, Database, Mic, MicOff, Mail, Users, Headset,
+  Volume2, VolumeX, Brain, ChevronDown, ChevronUp, ExternalLink, Sparkles
 } from "lucide-react";
 import "./App.css";
 import SettingsView from "./SettingsView";
-import LiveChatView from "./components/LiveChatView";
 import TicketsView from "./components/TicketsView";
 import KnowledgeBaseView from "./components/KnowledgeBaseView";
 import AnalyticsView from "./components/AnalyticsView";
-import VoiceView from "./components/VoiceView";
+import PredictionsView from "./components/PredictionsView";
 import EmailView from "./components/EmailView";
 import CrmView from "./components/CrmView";
+import AgentConsole from "./components/AgentConsole";
+
+const API = "http://localhost:8000";
+
+const LANGUAGE_META = {
+  hi: { name: "Hindi", color: "orange" },
+  hin: { name: "Hinglish", color: "orange" },
+  bn: { name: "Bengali", color: "green" },
+  ta: { name: "Tamil", color: "red" },
+  te: { name: "Telugu", color: "blue" },
+  mr: { name: "Marathi", color: "purple" },
+  gu: { name: "Gujarati", color: "yellow" },
+  pa: { name: "Punjabi", color: "indigo" },
+  kn: { name: "Kannada", color: "teal" },
+  ml: { name: "Malayalam", color: "pink" },
+  or: { name: "Odia", color: "orange" },
+  ur: { name: "Urdu", color: "green" },
+  en: { name: "English", color: "gray" }
+};
+
+function speakText(text, lang = "en") {
+  if (!window.speechSynthesis) return null;
+  window.speechSynthesis.cancel();
+  const utter = new SpeechSynthesisUtterance(text);
+  
+  const TTS_MAP = {
+    "hi": "hi-IN", "hin": "hi-IN",
+    "ta": "ta-IN", "bn": "bn-IN",
+    "te": "te-IN", "mr": "mr-IN",
+    "gu": "gu-IN", "kn": "kn-IN",
+    "ml": "ml-IN", "pa": "pa-IN",
+    "ur": "ur-IN", "or": "or-IN",
+    "en": "en-US"
+  };
+  
+  utter.lang = TTS_MAP[lang] || "en-US";
+  utter.rate = 0.95;
+  const voices = window.speechSynthesis.getVoices();
+  const prefix = utter.lang.split("-")[0];
+  const match = voices.find(v => v.lang.startsWith(prefix));
+  if (match) utter.voice = match;
+  window.speechSynthesis.speak(utter);
+  return utter;
+}
 
 /* ─────────────────────────────────────────────
    LANGUAGE PACK
@@ -33,6 +77,14 @@ const LANG = {
     messages: "Conversation Log",
     graph: "Sentiment Timeline",
     empty: "Start a conversation to see analysis",
+    voiceReply: "Voice Reply",
+    recording: "Recording…",
+    memoryPanel: "Customer Memory",
+    returningCustomer: "Returning Customer",
+    viewProfile: "View Full Profile",
+    memoryUsed: "Response personalized based on",
+    pastInteractions: "past interactions",
+    ticketFromVoice: "Ticket created from voice message",
     alertTitle: "Escalation Required",
     alertSub: "This interaction needs human attention",
     acknowledge: "Acknowledge",
@@ -54,6 +106,7 @@ const LANG = {
       email: "Email",
       tickets: "Tickets",
       analytics: "Analytics",
+      predictions: "Predictions",
       knowledge: "Knowledge Base"
     },
   },
@@ -163,6 +216,19 @@ export default function App() {
   const [activeView, setActiveView]   = useState("chat");
   const [activeTicketId, setActiveTicketId] = useState(null);
 
+  // Voice + Memory state
+  const [voiceOn, setVoiceOn]         = useState(false);
+  const [recording, setRecording]     = useState(false);
+  const [recordTime, setRecordTime]   = useState(0);
+  const [speaking, setSpeaking]       = useState(false);
+  const [micError, setMicError]       = useState(null);
+  const [toast, setToast]             = useState(null);
+  const [customerProfile, setCustomerProfile] = useState(null);
+  const [memoryPanelOpen, setMemoryPanelOpen] = useState(true);
+  const [smartGreeting, setSmartGreeting] = useState(null);
+  const [customerId, setCustomerId]   = useState(null);
+  const [waveBars, setWaveBars]       = useState(Array(12).fill(4));
+
   // System Metrics State
   const [sessionStart] = useState(Date.now());
   const [sessionTime, setSessionTime] = useState({h: 0, m: 0});
@@ -190,11 +256,46 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    const onEmail = () => setActiveView("email");
+    const onCrm = () => setActiveView("crm");
+    window.addEventListener("navigate-email-compose", onEmail);
+    window.addEventListener("navigate-crm", onCrm);
+    return () => {
+      window.removeEventListener("navigate-email-compose", onEmail);
+      window.removeEventListener("navigate-crm", onCrm);
+    };
+  }, []);
+
   const wsRef    = useRef(null);
   const idxRef   = useRef(0);
   const chatEnd  = useRef(null);
   const inputRef = useRef(null);
+  const mediaRecRef = useRef(null);
+  const chunksRef = useRef([]);
+  const timerRef = useRef(null);
+  const waveAnimRef = useRef(null);
+  const recordTimeRef = useRef(0);
+  const voiceOnRef = useRef(voiceOn);
+  const langRef = useRef(lang);
   const T = LANG[lang];
+
+  useEffect(() => { voiceOnRef.current = voiceOn; }, [voiceOn]);
+  useEffect(() => { langRef.current = lang; }, [lang]);
+
+  const showToast = useCallback((msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 4000);
+  }, []);
+
+  const fetchProfile = useCallback(async (cid) => {
+    if (!cid) return;
+    try {
+      const res = await fetch(`${API}/memory/profile/${encodeURIComponent(cid)}`);
+      const data = await res.json();
+      setCustomerProfile(data);
+    } catch (e) { console.error(e); }
+  }, []);
 
   /* ── WebSocket ── */
   useEffect(() => {
@@ -206,11 +307,36 @@ export default function App() {
       ws.onerror = () => ws.close();
       ws.onmessage = (e) => {
         const data = JSON.parse(e.data);
+
+        if (data.type === "greeting") {
+          setSmartGreeting(data.message);
+          if (data.profile) setCustomerProfile(data.profile);
+          if (data.profile?.customer_identifier) setCustomerId(data.profile.customer_identifier);
+          return;
+        }
+
         idxRef.current += 1;
         const point = { ...data, index: idxRef.current, ts: Date.now() };
         setLastEmotion(data.emotion);
         setMsgs(prev => [...prev, point].slice(-100));
         setGraph(prev => [...prev, point].slice(-30));
+
+        if (data.customer_identifier) {
+          setCustomerId(data.customer_identifier);
+          fetchProfile(data.customer_identifier);
+        }
+
+        if (data.ticket_id) {
+          showToast(`Ticket #${data.ticket_id} created from voice message`);
+        }
+
+        if (voiceOnRef.current && data.reply) {
+          setSpeaking(true);
+          const utter = speakText(data.reply, data.language || langRef.current);
+          if (utter) utter.onend = () => setSpeaking(false);
+          else setSpeaking(false);
+        }
+
         if (data.action === "ESCALATE") {
           setAlert(data);
         }
@@ -218,19 +344,102 @@ export default function App() {
     };
     connect();
     return () => wsRef.current?.close();
+  }, [fetchProfile, showToast]);
+
+  useEffect(() => () => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (waveAnimRef.current) cancelAnimationFrame(waveAnimRef.current);
   }, []);
 
-  /* ── Auto-scroll ── */
+  const sendWs = useCallback((payload) => {
+    if (wsRef.current?.readyState !== WebSocket.OPEN) return;
+    const text = typeof payload === "string" ? payload : payload.text;
+    if (!text?.trim()) return;
+    if (typeof payload === "string") {
+      wsRef.current.send(text.trim());
+    } else {
+      wsRef.current.send(JSON.stringify(payload));
+    }
+  }, []);
+
+  const send = useCallback(() => {
+    if (!input.trim()) return;
+    sendWs(input.trim());
+    setInput("");
+    inputRef.current?.focus();
+  }, [input, sendWs]);
+
+  const transcribeAndSend = useCallback(async (blob, duration) => {
+    try {
+      const formData = new FormData();
+      formData.append("file", blob, "recording.webm");
+      const res = await fetch(`${API}/voice/transcribe`, { method: "POST", body: formData });
+      const data = await res.json();
+      if (data.transcript?.trim()) {
+        setInput(data.transcript.trim());
+        sendWs({
+          text: data.transcript.trim(),
+          source: "voice",
+          audio_duration: data.audio_duration || duration,
+          language: data.language || "en"
+        });
+        setInput("");
+      } else {
+        setMicError("Couldn't understand. Please try again.");
+      }
+    } catch (err) {
+      console.error(err);
+      setMicError("Transcription failed.");
+    }
+  }, [sendWs]);
+
+  const startRecording = async () => {
+    setMicError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mr = new MediaRecorder(stream, { mimeType: "audio/webm" });
+      chunksRef.current = [];
+      mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+      mr.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        await transcribeAndSend(blob, recordTimeRef.current);
+      };
+      mr.start();
+      mediaRecRef.current = mr;
+      setRecording(true);
+      setRecordTime(0);
+      recordTimeRef.current = 0;
+      timerRef.current = setInterval(() => {
+        recordTimeRef.current += 1;
+        setRecordTime(recordTimeRef.current);
+      }, 1000);
+      const animate = () => {
+        setWaveBars(Array.from({ length: 12 }, () => 4 + Math.random() * 20));
+        waveAnimRef.current = requestAnimationFrame(animate);
+      };
+      animate();
+    } catch (err) {
+      setMicError("Microphone access denied.");
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecRef.current?.state !== "inactive") mediaRecRef.current?.stop();
+    setRecording(false);
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    if (waveAnimRef.current) { cancelAnimationFrame(waveAnimRef.current); waveAnimRef.current = null; }
+  };
+
+  const fmtTime = (s) => `${Math.floor(s / 60).toString().padStart(2, "0")}:${(s % 60).toString().padStart(2, "0")}`;
+
   useEffect(() => {
     chatEnd.current?.scrollIntoView({ behavior: "smooth" });
   }, [msgs]);
 
-  const send = useCallback(() => {
-    if (!input.trim() || wsRef.current?.readyState !== WebSocket.OPEN) return;
-    wsRef.current.send(input.trim());
-    setInput("");
-    inputRef.current?.focus();
-  }, [input]);
+  useEffect(() => {
+    chatEnd.current?.scrollIntoView({ behavior: "smooth" });
+  }, [msgs]);
 
   const stats = {
     total:     msgs.length,
@@ -292,13 +501,9 @@ export default function App() {
             <Users size={15} />
             <span>CRM</span>
           </button>
-          <button className={`sidebar-nav-btn ${activeView === "livechat" ? "active" : ""}`} onClick={() => setActiveView("livechat")}>
-            <MessageSquare size={15} />
-            <span>{T.sidebar.livechat || "Live Chat"}</span>
-          </button>
-          <button className={`sidebar-nav-btn ${activeView === "voice" ? "active" : ""}`} onClick={() => setActiveView("voice")}>
-            <Mic size={15} />
-            <span>{T.sidebar.voice || "Voice"}</span>
+          <button className={`sidebar-nav-btn ${activeView === 'agentConsole' ? 'active' : ''}`} onClick={() => setActiveView('agentConsole')}>
+            <Headset size={15} />
+            <span>Agent Console</span>
           </button>
           <button className={`sidebar-nav-btn ${activeView === "tickets" ? "active" : ""}`} onClick={() => setActiveView("tickets")}>
             <Inbox size={15} />
@@ -307,6 +512,10 @@ export default function App() {
           <button className={`sidebar-nav-btn ${activeView === "analytics" ? "active" : ""}`} onClick={() => setActiveView("analytics")}>
             <BarChart3 size={15} />
             <span>{T.sidebar.analytics || "Analytics"}</span>
+          </button>
+          <button className={`sidebar-nav-btn ${activeView === "predictions" ? "active" : ""}`} onClick={() => setActiveView("predictions")}>
+            <Sparkles size={15} />
+            <span>{T.sidebar.predictions || "Predictions"}</span>
           </button>
           <button className={`sidebar-nav-btn ${activeView === "knowledge" ? "active" : ""}`} onClick={() => setActiveView("knowledge")}>
             <Database size={15} />
@@ -401,10 +610,10 @@ export default function App() {
             <CrmView />
           ) : activeView === "analytics" ? (
             <AnalyticsView />
-          ) : activeView === "livechat" ? (
-            <LiveChatView />
-          ) : activeView === "voice" ? (
-            <VoiceView />
+          ) : activeView === "predictions" ? (
+            <PredictionsView />
+          ) : activeView === "agentConsole" ? (
+            <AgentConsole />
           ) : (
             <>
               {/* ── LEFT PANE: Chat Workspace ── */}
@@ -454,9 +663,12 @@ export default function App() {
                     src="/welcome-brand.png" 
                     alt="Sentiment AI Logo" 
                     className="w-full max-w-[320px] h-auto mx-auto mb-6 block object-contain" 
-                    onError={(e) => { e.target.style.display = 'none'; console.error("Asset failed to mount safely."); }}
+                    onError={(e) => { e.target.style.display = 'none'; }}
                   />
                   <h1 className="greeting-title mt-6 mb-2">{T.greeting}</h1>
+                  {smartGreeting && (
+                    <p className="smart-greeting-text">{smartGreeting}</p>
+                  )}
                   <p className="greeting-sub text-sm text-gray-400 max-w-md mx-auto">{T.greetingSub}</p>
                 </div>
               )}
@@ -482,6 +694,11 @@ export default function App() {
                             <div className="msg-user-body">
                               <div className="msg-user-text">{m.message}</div>
                               <div className="msg-user-tags">
+                                {m.language && m.language !== "en" && (
+                                  <span className="msg-tag" style={{ color: "white", background: LANGUAGE_META[m.language]?.color || "gray" }}>
+                                    🇮🇳 {LANGUAGE_META[m.language]?.name || m.language}
+                                  </span>
+                                )}
                                 <span className="msg-tag" style={{ color: scoreColor(m.score), background: scoreBg(m.score) }}>
                                   {m.score?.toFixed(2)}
                                 </span>
@@ -502,10 +719,16 @@ export default function App() {
                                 <CircleDot size={16} strokeWidth={2} />
                               </div>
                               <div className="msg-bot-body">
-                                <div className="msg-bot-label">{T.botReply}</div>
+                                <div className="msg-bot-label-row">
+                                  <span className="msg-bot-label">{T.botReply}</span>
+                                  {m.memory_used > 0 && (
+                                    <span className="memory-badge" title={`${T.memoryUsed} ${m.memory_used} ${T.pastInteractions}`}>
+                                      <Brain size={12} />
+                                    </span>
+                                  )}
+                                </div>
                                 <div className="msg-bot-text">{m.reply}</div>
                               </div>
-
                             </div>
                           )}
 
@@ -522,42 +745,74 @@ export default function App() {
               )}
             </div>
 
-            {/* ── Streamlined Prompt Container (No Chips, No Plus Button) ── */}
+            {/* ── Unified Voice + Chat Input ── */}
             <div className="prompt-wrapper">
-              <div className="prompt-box">
-                {/* Text area row */}
-                <div className="prompt-input-row" style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-                  <button className="prompt-icon-btn" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '38px', height: '38px', borderRadius: '50%', border: '1px solid rgba(16, 185, 129, 0.4)', background: 'rgba(16, 185, 129, 0.05)', marginRight: '14px', flexShrink: 0 }}>
-                    <img 
-                      src="/chat-eye-icon.png" 
-                      alt="Eye Icon" 
-                      className="chat-input-eye-icon w-5 h-5 object-contain inline-block invert-[54%] sepia-[68%] saturate-[2244%] hue-rotate-[125deg] brightness-[98%] contrast-[101%]" 
-                      style={{ width: '20px', height: '20px', filter: 'invert(54%) sepia(68%) saturate(2244%) hue-rotate(125deg) brightness(98%) contrast(101%)' }}
-                    />
-                  </button>
-                  <input
-                    ref={inputRef}
-                    value={input}
-                    onChange={e => setInput(e.target.value)}
-                    onKeyDown={e => e.key === "Enter" && !e.shiftKey && send()}
-                    placeholder={T.placeholder}
-                    className="prompt-input"
-                    style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent' }}
-                    id="main-input"
-                  />
-                  <button className="send-btn" onClick={send} disabled={!input.trim()} id="send-button" style={{ marginLeft: '14px' }}>
-                    <ArrowUp size={16} strokeWidth={2.5} />
-                  </button>
+              {micError && (
+                <div className="mic-error-banner">
+                  {micError}
+                  <button onClick={() => setMicError(null)}><X size={12} /></button>
                 </div>
-                {/* Bottom toolbar */}
-                <div className="prompt-toolbar" style={{ display: 'none' }}>
-                  <div className="prompt-toolbar-left"></div>
-                  <div className="prompt-toolbar-right">
-                    <button className="prompt-icon-btn" title="Settings">
-                      <Settings size={15} />
+              )}
+              <div className="prompt-box">
+                <div className="prompt-input-row unified-input-row">
+                  {recording ? (
+                    <div className="recording-indicator">
+                      <span className="rec-dot" />
+                      <span className="rec-time">{fmtTime(recordTime)}</span>
+                      <div className="waveform-bars">
+                        {waveBars.map((h, i) => (
+                          <span key={i} className="wave-bar" style={{ height: `${h}px` }} />
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <button className="prompt-icon-btn" type="button">
+                        <img 
+                          src="/chat-eye-icon.png" 
+                          alt="Eye Icon" 
+                          style={{ width: '20px', height: '20px', filter: 'invert(54%) sepia(68%) saturate(2244%) hue-rotate(125deg) brightness(98%) contrast(101%)' }}
+                        />
+                      </button>
+                      <input
+                        ref={inputRef}
+                        value={input}
+                        onChange={e => setInput(e.target.value)}
+                        onKeyDown={e => e.key === "Enter" && !e.shiftKey && send()}
+                        placeholder={T.placeholder}
+                        className="prompt-input"
+                        id="main-input"
+                      />
+                    </>
+                  )}
+                  <div className="prompt-actions">
+                    <button
+                      className={`voice-toggle-btn compact ${voiceOn ? "active" : ""}`}
+                      onClick={() => setVoiceOn(!voiceOn)}
+                      title={`${T.voiceReply} ${voiceOn ? "ON" : "OFF"}`}
+                      type="button"
+                    >
+                      {voiceOn ? <Volume2 size={15} /> : <VolumeX size={15} />}
+                    </button>
+                    <button
+                      className={`mic-btn ${recording ? "recording" : ""}`}
+                      onClick={recording ? stopRecording : startRecording}
+                      type="button"
+                      title="Record voice"
+                    >
+                      {recording ? <MicOff size={16} /> : <Mic size={16} />}
+                    </button>
+                    <button className="send-btn" onClick={send} disabled={!input.trim() || recording} id="send-button">
+                      <ArrowUp size={16} strokeWidth={2.5} />
                     </button>
                   </div>
                 </div>
+                {speaking && (
+                  <div className="speaking-indicator inline-speaking">
+                    <div className="speaking-bars"><span /><span /><span /><span /><span /></div>
+                    <span>Speaking…</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -626,13 +881,57 @@ export default function App() {
               </div>
 
             </div>
-          </div>
 
+            {/* ── Customer Memory Panel ── */}
+            <div className={`memory-panel ${memoryPanelOpen ? "open" : "collapsed"}`}>
+              <button className="memory-panel-toggle" onClick={() => setMemoryPanelOpen(!memoryPanelOpen)}>
+                <Brain size={14} />
+                <span>{T.memoryPanel}</span>
+                {memoryPanelOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              </button>
+              {memoryPanelOpen && (
+                <div className="memory-panel-body">
+                  {customerProfile?.is_returning ? (
+                    <>
+                      <span className="returning-badge">{T.returningCustomer}</span>
+                      <div className="memory-name">{customerProfile.display_name}</div>
+                      <div className="memory-stat">
+                        <span>{customerProfile.interaction_count || 0}</span> past interactions
+                      </div>
+                      {customerProfile.common_issues?.length > 0 && (
+                        <div className="memory-issues">
+                          {customerProfile.common_issues.map((issue, i) => (
+                            <span key={i} className="memory-chip">{issue}</span>
+                          ))}
+                        </div>
+                      )}
+                      <p className="memory-personality">{customerProfile.personality_summary}</p>
+                      {customerProfile.last_visit && (
+                        <div className="memory-last-visit">
+                          Last visit: {new Date(customerProfile.last_visit).toLocaleDateString()}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <p className="memory-empty">New customer — no history yet</p>
+                  )}
+                  <button className="memory-profile-btn" onClick={() => setActiveView("crm")}>
+                    <ExternalLink size={13} />
+                    {T.viewProfile}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
 
             </>
           )}
         </div>
       </main>
+
+      {toast && (
+        <div className="toast-notification">{toast}</div>
+      )}
     </div>
   );
 }

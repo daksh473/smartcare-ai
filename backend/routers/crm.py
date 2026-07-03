@@ -4,8 +4,10 @@ from typing import Optional
 from database import (
     get_customers, get_customer, create_customer, update_customer, delete_customer,
     log_activity, get_customer_timeline, get_customer_full_profile,
-    get_deals, create_deal, update_deal, delete_deal, get_crm_stats
+    get_deals, create_deal, update_deal, delete_deal, get_crm_stats,
+    upsert_customer_from_chat
 )
+from ai.customer_extractor import extract_customer_info
 from ai.crm_ai import calculate_risk_score, generate_forecast, generate_customer_summary
 
 router = APIRouter(prefix="/crm", tags=["CRM"])
@@ -17,6 +19,12 @@ class CustomerRequest(BaseModel):
     company: Optional[str] = None
     source: Optional[str] = "manual"
     notes: Optional[str] = None
+    session_id: Optional[str] = None
+
+class ChatSyncRequest(BaseModel):
+    session_id: str
+    message: str
+    sentiment_score: Optional[float] = None
 
 class CustomerUpdateRequest(BaseModel):
     name: Optional[str] = None
@@ -65,9 +73,30 @@ def list_customers():
 
 @router.post("/customers")
 def new_customer(req: CustomerRequest):
+    if req.session_id:
+        extracted = {
+            "name": req.name if req.name and req.name != "Chat User" else None,
+            "email": req.email,
+            "phone": req.phone,
+            "company": req.company,
+        }
+        result = upsert_customer_from_chat(
+            req.session_id, extracted, message_snippet=req.notes or "Manual CRM update via chat session"
+        )
+        return result
+
     cid = create_customer(req.name, req.email, req.phone, req.company, req.source, req.notes)
     log_activity(cid, "note", "Customer profile created manually")
-    return {"id": cid}
+    return {"id": cid, "customer_id": cid, "created": True}
+
+@router.post("/customers/from-chat")
+def sync_from_chat(req: ChatSyncRequest):
+    """Extract customer info from a chat message and create/update CRM profile."""
+    extracted = extract_customer_info(req.message)
+    result = upsert_customer_from_chat(
+        req.session_id, extracted, req.sentiment_score, req.message
+    )
+    return result
 
 @router.get("/customers/{cid}")
 def fetch_customer(cid: int):

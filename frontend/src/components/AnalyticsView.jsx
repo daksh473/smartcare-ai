@@ -100,6 +100,7 @@ export default function AnalyticsView() {
   const [topIssues, setTopIssues] = useState(null);
   const [health, setHealth] = useState(null);
   const [voiceStats, setVoiceStats] = useState(null);
+  const [languageStats, setLanguageStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(null);
@@ -110,7 +111,7 @@ export default function AnalyticsView() {
 
     try {
       const opts = { method: "POST" };
-      const [ov, tr, em, ac, hr, ti, hs, vs] = await Promise.all([
+      const [ov, tr, em, ac, hr, ti, hs, vs, langStats] = await Promise.all([
         fetch(`${API}/overview`, opts).then(r => r.json()),
         fetch(`${API}/sentiment-trend`, opts).then(r => r.json()),
         fetch(`${API}/emotion-breakdown`, opts).then(r => r.json()),
@@ -119,6 +120,7 @@ export default function AnalyticsView() {
         fetch(`${API}/top-issues`, opts).then(r => r.json()),
         fetch(`${API}/customer-health-score`, opts).then(r => r.json()),
         fetch(`${API}/voice-stats`, opts).then(r => r.json()),
+        fetch(`http://localhost:8000/languages/stats`, { method: "GET" }).then(r => r.json()),
       ]);
 
       setOverview(ov);
@@ -129,6 +131,7 @@ export default function AnalyticsView() {
       setTopIssues(ti);
       setHealth(hs);
       setVoiceStats(vs);
+      setLanguageStats(langStats);
       setLastRefresh(new Date());
     } catch (err) {
       console.error("Analytics fetch error:", err);
@@ -220,6 +223,45 @@ export default function AnalyticsView() {
         <KpiCard label="Most Common Language" value={voiceStats?.most_common_language?.toUpperCase() ?? "N/A"} color="#3B82F6" />
         <KpiCard label="Avg Confidence Score" value={(voiceStats?.avg_confidence_score * 100)?.toFixed(1) ?? 0} suffix="%" color="#30A46C" />
       </div>
+
+      {/* ── Row 1.6: Regional Language Breakdown ── */}
+      <h3 className="av-chart-title" style={{ marginTop: '10px' }}>Regional Language Breakdown</h3>
+      {languageStats && languageStats.length > 0 && (
+        <div className="av-row-2 mb-6">
+          <div className="av-chart-card flex-1">
+            <h3 className="av-chart-title">Usage by Language</h3>
+            <ResponsiveContainer width="100%" height={260}>
+              <PieChart>
+                <Pie data={languageStats} dataKey="count" nameKey="language_name" cx="50%" cy="50%" outerRadius={80} paddingAngle={5}>
+                  {languageStats.map((entry, index) => {
+                    const colors = { hi: "orange", bn: "green", ta: "red", te: "blue", mr: "purple", gu: "yellow", pa: "indigo", kn: "teal", ml: "pink", en: "gray" };
+                    return <Cell key={`cell-${index}`} fill={colors[entry.language] || "#8884d8"} />;
+                  })}
+                </Pie>
+                <Tooltip content={<DarkTooltip />} />
+                <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '20px' }} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="av-chart-card flex-1">
+            <h3 className="av-chart-title">Avg Sentiment per Language</h3>
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={languageStats} margin={{ top: 10, right: 20, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
+                <XAxis dataKey="language_name" tick={{ fill: "#666", fontSize: 11 }} />
+                <YAxis domain={[0, 1]} tick={{ fill: "#666", fontSize: 11 }} />
+                <Tooltip content={<DarkTooltip />} cursor={{ fill: "#2a2a2a" }} />
+                <Bar dataKey="avg_sentiment" name="Avg Sentiment" radius={[4, 4, 0, 0]}>
+                  {languageStats.map((entry, index) => {
+                    const colors = { hi: "orange", bn: "green", ta: "red", te: "blue", mr: "purple", gu: "yellow", pa: "indigo", kn: "teal", ml: "pink", en: "gray" };
+                    return <Cell key={`cell-${index}`} fill={colors[entry.language] || "#8884d8"} />;
+                  })}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
 
       {/* ── Row 2: Sentiment Trend + Emotion Breakdown ── */}
       <div className="av-row-2">

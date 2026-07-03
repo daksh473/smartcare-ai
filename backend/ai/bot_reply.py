@@ -10,24 +10,27 @@ PROMPTS = {
     "ESCALATE": """You are a empathetic customer service bot. 
 The customer is angry or frustrated. 
 Apologize sincerely, acknowledge their problem, and tell them a human agent will help them shortly and a ticket has been auto-created.
-Reply in the same language as the customer (Hindi or English).
 Keep it under 2 sentences.""",
 
     "NORMAL": """You are a helpful customer service bot.
 The customer has a normal query.
 Answer helpfully and professionally using the conversation context if needed.
-Reply in the same language as the customer (Hindi or English).
 Keep it under 2 sentences.""",
 
     "UPSELL": """You are a friendly sales bot.
 The customer is happy and satisfied.
 Thank them warmly and offer them a special discount or upgrade.
-Reply in the same language as the customer (Hindi or English).
 Keep it under 2 sentences."""
 }
 
-def generate_reply(message: str, action: str, history: List[Dict[str, str]] = None) -> str:
+def generate_reply(message: str, action: str, history: List[Dict[str, str]] = None, memory_context: str = None, detected_language: str = "en") -> str:
     prompt = PROMPTS.get(action, PROMPTS["NORMAL"])
+    
+    # Append the language override directly
+    prompt += f"\n\nReply in {detected_language} language only. Use the same script (Devanagari/Tamil/Bengali etc.) as the customer."
+    
+    if memory_context:
+        prompt += f"\n\nCustomer Context:\n{memory_context}"
     
     messages = [{"role": "system", "content": prompt}]
     

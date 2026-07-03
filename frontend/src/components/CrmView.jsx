@@ -17,6 +17,12 @@ const STATUS_COLORS = {
   churned: { bg: "rgba(229,72,77,0.1)", text: "#E5484D" }
 };
 
+const SOURCE_COLORS = {
+  chat: { bg: "rgba(48,164,108,0.12)", text: "#30A46C" },
+  email: { bg: "rgba(59,130,246,0.12)", text: "#3B82F6" },
+  manual: { bg: "rgba(160,160,160,0.1)", text: "#A0A0A0" },
+};
+
 export default function CrmView() {
   const [activeTab, setActiveTab] = useState("overview");
   const [stats, setStats] = useState(null);
@@ -292,10 +298,21 @@ export default function CrmView() {
   const getIconForType = (type) => {
     switch(type) {
       case 'email': return <Mail size={14} className="text-blue-400"/>;
+      case 'chat': return <MessageSquare size={14} className="text-green-400"/>;
       case 'ticket': return <Ticket size={14} className="text-purple-400"/>;
       case 'voice': return <Mic size={14} className="text-green-400"/>;
       default: return <MessageSquare size={14} className="text-gray-400"/>;
     }
+  };
+
+  const SourceBadge = ({ source }) => {
+    const s = source || "manual";
+    const colors = SOURCE_COLORS[s] || SOURCE_COLORS.manual;
+    return (
+      <span className="crm-badge source-badge" style={{ background: colors.bg, color: colors.text }}>
+        {s.toUpperCase()}
+      </span>
+    );
   };
 
   if (loading) return <div className="crm-loading">Loading CRM...</div>;
@@ -406,7 +423,7 @@ export default function CrmView() {
             <table className="crm-table">
               <thead>
                 <tr>
-                  <th>Name</th><th>Company</th><th>Status</th><th>Risk Score</th><th>Avg Sentiment</th><th>Last Contact</th>
+                  <th>Name</th><th>Company</th><th>Source</th><th>Status</th><th>Risk Score</th><th>Avg Sentiment</th><th>Last Contact</th>
                 </tr>
               </thead>
               <tbody>
@@ -417,6 +434,7 @@ export default function CrmView() {
                       <div className="text-xs text-gray-400">{c.email}</div>
                     </td>
                     <td>{c.company || "-"}</td>
+                    <td><SourceBadge source={c.source} /></td>
                     <td>
                       <span className="crm-badge" style={{background: STATUS_COLORS[c.status]?.bg, color: STATUS_COLORS[c.status]?.text}}>
                         {c.status.toUpperCase()}
@@ -458,7 +476,7 @@ export default function CrmView() {
                     <span className="crm-badge" style={{background: STATUS_COLORS[profileData.profile.status || 'lead']?.bg, color: STATUS_COLORS[profileData.profile.status || 'lead']?.text}}>
                       {(profileData.profile.status || 'lead').toUpperCase()}
                     </span>
-                    <span className="badge-small bg-gray-800">{profileData.profile.source || 'manual'}</span>
+                    <SourceBadge source={profileData.profile.source} />
                   </div>
 
                   <div className="risk-dial-container mb-6">
