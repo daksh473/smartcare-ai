@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Plus, ArrowUp, MessageSquare, BarChart3, Settings,
   CircleDot, AlertTriangle, X, Clock, Wifi, Inbox, LayoutDashboard, Database, Mic, MicOff, Mail, Users, Headset,
-  Volume2, VolumeX, Brain, ChevronDown, ChevronUp, ExternalLink, Sparkles
+  Volume2, VolumeX, Brain, ChevronDown, ChevronUp, ExternalLink, Sparkles, FileSpreadsheet
 } from "lucide-react";
 import "./App.css";
 import SettingsView from "./SettingsView";
@@ -13,6 +13,7 @@ import PredictionsView from "./components/PredictionsView";
 import EmailView from "./components/EmailView";
 import CrmView from "./components/CrmView";
 import AgentConsole from "./components/AgentConsole";
+import ExcelView from "./components/ExcelView";
 
 const API = "http://localhost:8000";
 
@@ -107,6 +108,7 @@ const LANG = {
       tickets: "Tickets",
       analytics: "Analytics",
       predictions: "Predictions",
+      excel: "Excel",
       knowledge: "Knowledge Base"
     },
   },
@@ -517,6 +519,10 @@ export default function App() {
             <Sparkles size={15} />
             <span>{T.sidebar.predictions || "Predictions"}</span>
           </button>
+          <button className={`sidebar-nav-btn ${activeView === "excel" ? "active" : ""}`} onClick={() => setActiveView("excel")}>
+            <FileSpreadsheet size={15} />
+            <span>{T.sidebar.excel || "Excel"}</span>
+          </button>
           <button className={`sidebar-nav-btn ${activeView === "knowledge" ? "active" : ""}`} onClick={() => setActiveView("knowledge")}>
             <Database size={15} />
             <span>{T.sidebar.knowledge || "Knowledge Base"}</span>
@@ -614,6 +620,8 @@ export default function App() {
             <PredictionsView />
           ) : activeView === "agentConsole" ? (
             <AgentConsole />
+          ) : activeView === "excel" ? (
+            <ExcelView />
           ) : (
             <>
               {/* ── LEFT PANE: Chat Workspace ── */}

@@ -16,7 +16,7 @@ import json
 import asyncio
 from ai.proactive_alerts import proactive_alert_cron
 
-from routers import tickets, conversation, knowledge, analytics, voice, email, crm, handoff, memory, predict, language
+from routers import tickets, conversation, knowledge, analytics, voice, email, crm, handoff, memory, predict, language, excel
 import httpx
 
 load_dotenv()
@@ -52,6 +52,7 @@ app.include_router(handoff.router)
 app.include_router(memory.router)
 app.include_router(predict.router)
 app.include_router(language.router)
+app.include_router(excel.router)
 
 class AgentConnectionManager:
     def __init__(self):

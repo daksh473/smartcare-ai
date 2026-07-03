@@ -219,7 +219,36 @@ def init_db():
             calculated_at TEXT NOT NULL
         )
     ''')
-    
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS import_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            filename TEXT NOT NULL,
+            file_type TEXT NOT NULL,
+            detected_type TEXT,
+            total_rows INTEGER DEFAULT 0,
+            imported INTEGER DEFAULT 0,
+            skipped INTEGER DEFAULT 0,
+            errors INTEGER DEFAULT 0,
+            status TEXT DEFAULT 'completed',
+            imported_ids TEXT,
+            created_at TEXT NOT NULL
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS excel_sync_settings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sync_type TEXT NOT NULL,
+            source_url TEXT,
+            source_path TEXT,
+            status TEXT DEFAULT 'disconnected',
+            last_synced TEXT,
+            auto_sync INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL
+        )
+    ''')
+
     # Seed Agents
     cursor.execute('SELECT COUNT(*) FROM agents')
     if cursor.fetchone()[0] == 0:
